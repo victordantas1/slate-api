@@ -11,7 +11,9 @@ Uma issue por execução, do GitHub até o PR, com estado **commitado no reposit
 
 **Dentro de uma issue não há checkpoint.** Rodar o loop é a aprovação de tudo: desenho, plano, implementação, revisão e PR. A revisão humana acontece no PR, não antes.
 
-**A spec é o contrato.** `docs/superpowers/specs/2026-08-22-slate-design.md`, no `slate-api`. Toda issue cita uma seção dela. Quando a issue e a spec divergem, a spec ganha e a divergência vira linha no corpo do PR.
+**A issue do GitHub é o contrato.** Título, descrição e critérios de aceite são o requisito completo — as issues foram escritas para serem auto-suficientes. Você lê a issue, escreve o plano, implementa, abre o PR.
+
+**Nenhum documento de projeto é pré-requisito.** Se houver uma spec de design no repo, ela é contexto útil. Se não houver, a issue basta. Ausência de documentação **nunca** bloqueia a rodada — ver "Documento ausente não é bloqueio".
 
 ## Constantes
 
@@ -20,7 +22,8 @@ Uma issue por execução, do GitHub até o PR, com estado **commitado no reposit
 | Repos | `<owner>/slate-api`, `<owner>/slate-web` |
 | Base dos dois | `main` |
 | Forja | GitHub, via `gh` |
-| Spec | `slate-api:docs/superpowers/specs/2026-08-22-slate-design.md` |
+| Planos | `<repo>/docs/plans/<numero>-<slug>.md`, um por issue, na branch |
+| Spec de design | `slate-api:docs/superpowers/specs/` — **opcional**. Leia se existir, siga sem se não existir. |
 | Estado | `<repo>/.claude/loop-state.md`, commitado em `main` |
 | Fila | issue aberta, com milestone, **sem** label `status:*`, com dependências satisfeitas |
 | Ao reivindicar | label `status:doing` |
@@ -129,13 +132,19 @@ Confirme com o gate mais barato do repo antes de escrever código. Se a instala�
 
 Toda decisão de desenho sai da primeira fonte que responder:
 
-1. **A spec** (`2026-08-22-slate-design.md`) — inclusive a tabela de decisões D1–D10 e a seção de invariantes. É o contrato.
-2. **O corpo da issue** — critérios de aceite são requisitos, não sugestões.
-3. **Código vizinho no mesmo repo** — copie o padrão do módulo análogo. Cite o caminho do arquivo que serviu de modelo.
-4. **`CLAUDE.md` do repo** — comandos e gates.
+1. **O corpo da issue e seus comentários** — critérios de aceite são requisitos, não sugestões. Blocos de SQL, tabelas e fórmulas dentro da issue são especificação literal: implemente o que está escrito ali.
+2. **Código vizinho no mesmo repo** — copie o padrão do módulo análogo. Cite o caminho do arquivo que serviu de modelo.
+3. **`CLAUDE.md` do repo** — comandos, gates, convenções.
+4. **Spec de design em `docs/`, se existir** — contexto de arquitetura. Se a issue e a spec divergirem, **a issue ganha**: ela é mais recente e mais específica. Registre a divergência no corpo do PR.
 5. **Nada respondeu** → opção mais conservadora: menor diff, nenhuma dependência nova, contrato público inalterado. Registre como **Pressuposto**, uma linha, no corpo do PR e num comentário da issue.
 
 Um pressuposto registrado é a resposta certa.
+
+### Documento ausente não é bloqueio
+
+Spec, ADR, diagrama, README, plano de issue anterior — **a falta de qualquer artefato de documentação nunca impede a rodada.** Se a issue cita uma seção de um documento que não existe no repo, você tem tudo o que precisa: o corpo da issue foi escrito para ser auto-suficiente. Anote uma linha no plano (`spec citada não existe no repo; implementado a partir da issue`) e siga.
+
+Isto vale para todos os cinco bloqueios da seção abaixo: nenhum deles é sobre documentação. Bloqueio é ambiente e permissão, nunca informação de projeto.
 
 ### Não há usuário para perguntar
 
@@ -154,21 +163,34 @@ Depois: commite o estado, empurre a branch se houver trabalho aproveitável, e e
 - Credencial ausente ou expirada: sem `SUPABASE_URL` de teste, sem token do `gh`, sem acesso ao registry.
 - Gate falha por motivo ambiental que nenhuma correção de código resolve.
 - Três rodadas de correção de CI sem verde.
-- Contradição real entre a spec e a issue que muda o contrato público — não uma ambiguidade que a escada resolve.
+- Ação irreversível não coberta acima que exigiria decisão humana explícita.
 
-Fora desses cinco, decida e siga.
+Fora desses cinco, decida e siga. **Nenhum deles é sobre documentação, arquivo de projeto ausente ou ambiguidade de requisito** — isso a escada resolve, com pressuposto registrado se necessário.
+
+Bloqueio é sempre de uma **issue específica**. Se você não reivindicou nenhuma issue ainda, não há o que bloquear: ou a fila está vazia (reporte e encerre), ou há issue elegível (pegue e trabalhe).
 
 ## Rota por tipo
 
-A spec já existe e cobre o projeto inteiro. **Não escreva spec nova por issue** e **não chame `superpowers:brainstorming`** — o gate dela é exatamente o que este loop remove.
+**Toda issue gera um plano de implementação**, em `docs/plans/<numero>-<slug>.md`, na branch da issue. É o artefato que a rotina produz antes de tocar em código, e é contra ele que a revisão final valida.
+
+**Não chame `superpowers:brainstorming`** — o gate dela ("não implemente até o usuário aprovar") é exatamente o que este loop remove.
 
 | Sinal | Rota | Artefato |
 | --- | --- | --- |
-| `type:test`, ou issue com ≤ 2 arquivos e critérios de aceite auto-explicativos | direto para TDD | nenhum |
-| `type:feature` ou `area:engine` | `superpowers:writing-plans`, parando antes do "Execution Handoff" | `docs/superpowers/plans/<numero>-<slug>.md` |
-| comportamento errado de algo que já existe | `superpowers:systematic-debugging` | causa raiz + evidência em comentário na issue, antes da correção |
+| comportamento errado de algo que já existe | `superpowers:systematic-debugging` → plano de correção | causa raiz em comentário na issue **antes** da correção, + plano |
+| todo o resto | `superpowers:writing-plans`, parando antes do "Execution Handoff" | `docs/plans/<numero>-<slug>.md` |
 
-O plano entra no commit da branch (é documentação do trabalho), diferente do estado, que vai para `main`.
+O plano tem cinco partes, e sai **da issue**:
+
+1. **Objetivo** — uma frase, do critério de aceite.
+2. **Arquivos** — cada caminho que será criado ou tocado.
+3. **Tarefas** — a sequência, uma linha cada.
+4. **Pressupostos** — cada decisão do degrau 5 da escada, uma linha.
+5. **Testes** — o que prova cada critério de aceite da issue.
+
+Sem "TBD", sem alternativa em aberto. O plano registra a decisão tomada.
+
+O plano entra no commit da branch (documentação do trabalho), diferente do estado, que vai para `main`.
 
 ## Contagem antes de implementar
 
@@ -179,7 +201,7 @@ Com o plano escrito, conte **no arquivo do plano**: quantas tarefas e quantos ar
 | ≤ 2 tarefas **e** ≤ 4 arquivos | inline, em TDD |
 | ≥ 3 tarefas **ou** ≥ 5 arquivos | `superpowers:subagent-driven-development` |
 
-Anuncie em uma frase — "plano com 5 tarefas em 7 arquivos → subagent-driven-development" — escreva no estado, e execute. A contagem é a decisão inteira. Issue sem plano (rota direta) é sempre inline.
+Anuncie em uma frase — "plano com 5 tarefas em 7 arquivos → subagent-driven-development" — escreva no estado, e execute. A contagem é a decisão inteira: não pese "a issue parece simples", não pergunte.
 
 ### SDD dentro do loop
 
@@ -211,7 +233,7 @@ Enquanto ele não existir (issues de bootstrap), o piso é:
 
 Três passos, nesta ordem, sem pergunta entre eles.
 
-**1. Revisão contra a spec.** `superpowers:requesting-code-review`: despache um subagente `general-purpose` com o template `code-reviewer.md`. `{PLAN_OR_REQUIREMENTS}` = o caminho da spec, a seção que a issue cita, e os critérios de aceite da issue colados. `BASE_SHA` = `git merge-base origin/main HEAD`. Nunca revise o próprio diff inline. Sob SDD, a revisão final dele já é esta.
+**1. Revisão contra o plano e a issue.** `superpowers:requesting-code-review`: despache um subagente `general-purpose` com o template `code-reviewer.md`. `{PLAN_OR_REQUIREMENTS}` = o caminho do plano **mais os critérios de aceite da issue colados literalmente**. É isso que se valida, não "o código em geral". `BASE_SHA` = `git merge-base origin/main HEAD`. Nunca revise o próprio diff inline. Sob SDD, a revisão final dele já é esta.
 
 **2. Uma onda de correção, e só uma.** Critical/Important vão para **um** subagente com a lista completa, seguido de **uma** re-review escopada no diff da correção. O que sobrar vira linha no corpo do PR (`achado conhecido: <o quê> — <por que fica>`). Minor vai direto para o corpo do PR, sem onda.
 
@@ -223,8 +245,8 @@ gh pr create --repo "$OWNER/$REPO" --base main \
   --title "<tipo>: <título da issue>" \
   --body "Closes #<n>
 
-## Spec
-<seção da spec que esta issue implementa>
+## Plano
+docs/plans/<numero>-<slug>.md
 
 ## O que mudou
 <resumo em 3–5 linhas>
@@ -280,20 +302,22 @@ Escreva no estado quando o fato for caro de redescobrir, não só na virada de f
 
 1. `git clone` do repo, `main`, `pull`.
 2. **Leia `.claude/loop-state.md` e confira contra o GitHub** (`status:doing`, PRs abertos, branches remotas). O mundo real ganha do arquivo.
-3. Se há issue com fase diferente de `entregue`, **retome-a**. Não pegue uma nova.
-4. Senão: liste as filas de `slate-api` e depois `slate-web`, aplique os filtros e a ordem. Vazio nos dois → pare.
-5. `gh issue view <n> --comments`. Leia a seção da spec que ela cita.
-6. `gh issue edit <n> --add-label status:doing`. Comente a rota escolhida.
-7. Escreva o estado, commite em `main`, empurre.
-8. Crie a branch. Instale dependências. Rode o gate mais barato para confirmar o ambiente.
-9. Rode a skill da rota. Se houver plano, **conte tarefas e arquivos** e anuncie a rota de execução.
-10. Implemente em TDD — inline ou por SDD. Rode os gates do `CLAUDE.md`.
-11. `git add` **caminho a caminho**, nunca `-A`. Nunca `--no-verify`.
-12. Atualize o estado a cada virada de fase: checkout `main`, commit, push, volte para a branch.
-13. Revisão contra a spec, depois **uma** onda de correção.
-14. Push e PR contra `main`, com `Closes #<n>`. Label `status:review`.
-15. Fase `ci` até `pass` (≤ 3 rodadas de correção).
-16. Marque `entregue` no estado, commite em `main`, comente o resumo na issue e **encerre a execução**.
+3. Se o estado registra uma issue com fase diferente de `entregue`, **retome-a**. Não pegue uma nova.
+4. **Estado sem issue reivindicada é lixo — descarte e siga.** Um estado que registra bloqueio de rodada, erro de execução anterior ou pré-requisito ausente, sem número de issue e sem label `status:doing` correspondente no GitHub, não descreve trabalho em curso. Sobrescreva-o e continue pelo passo 5. **Nunca encerre a rodada por causa do que o estado anterior diz.**
+5. Liste as filas de `slate-api` e depois `slate-web`, aplique os filtros e a ordem. Vazio nos dois → pare.
+6. `gh issue view <n> --comments`. O corpo da issue é o requisito completo.
+7. `gh issue edit <n> --add-label status:doing`. Comente a rota escolhida.
+8. Escreva o estado, commite em `main`, empurre.
+9. Crie a branch. Instale dependências. Rode o gate mais barato para confirmar o ambiente.
+10. **Escreva o plano** em `docs/plans/<numero>-<slug>.md`, a partir da issue. Commite na branch.
+11. **Conte tarefas e arquivos do plano** e anuncie a rota de execução.
+12. Implemente em TDD — inline ou por SDD. Rode os gates do `CLAUDE.md`.
+13. `git add` **caminho a caminho**, nunca `-A`. Nunca `--no-verify`.
+14. Atualize o estado a cada virada de fase: checkout `main`, commit, push, volte para a branch.
+15. Revisão contra o plano e os critérios de aceite, depois **uma** onda de correção.
+16. Push e PR contra `main`, com `Closes #<n>`. Label `status:review`.
+17. Fase `ci` até `pass` (≤ 3 rodadas de correção).
+18. Marque `entregue` no estado, commite em `main`, comente o resumo na issue e **encerre a execução**.
 
 ## Template do estado
 
@@ -305,9 +329,9 @@ Escreva no estado quando o fato for caro de redescobrir, não só na virada de f
 - **repo:** slate-api
 - **issue:** #12 — Motor: cascata de edição com escopo this/forward/all
 - **url:** https://github.com/<owner>/slate-api/issues/12
-- **spec:** docs/superpowers/specs/2026-08-22-slate-design.md §6.2
+- **plano:** docs/plans/12-cascata-edicao.md
 - **milestone:** M2 · Motor
-- **rota:** feature → writing-plans
+- **rota:** writing-plans
 - **execucao:** 4 tarefas / 5 arquivos → subagent-driven-development
 - **fase:** analise | plano | implementacao | gates | revisao | pr | ci | entregue
 - **branch:** feat/12-cascata-edicao (base main, sha a1b2c3d)
@@ -337,7 +361,11 @@ Invariante 2 escrita e falhando (vermelho esperado). Falta o filtro
 | Perguntar ao usuário | Não há usuário. Ou a escada decide, ou é bloqueio → label + comentário + encerrar. |
 | Encerrar bloqueado deixando `status:doing` | A próxima execução tentaria retomar. Troque para `status:blocked`. |
 | Criar worktree | Uma issue por execução em ambiente efêmero. Branch direto no checkout. |
-| Escrever spec nova por issue | A spec do projeto já existe e é o contrato. Só plano, quando a rota pedir. |
+| **Bloquear porque uma spec ou documento citado não existe** | O corpo da issue é o requisito completo. Anote a linha no plano e implemente. |
+| **Encerrar a rodada por causa de um pré-requisito de documentação** | Os cinco bloqueios são ambiente e permissão. Documentação nunca está entre eles. |
+| **Bloquear antes de reivindicar issue** | Bloqueio é sempre de uma issue específica. Sem issue reivindicada: ou a fila está vazia, ou pegue uma e trabalhe. |
+| **Encerrar porque o estado anterior diz "bloqueado"** | Estado sem issue reivindicada é lixo. Sobrescreva e siga. |
+| Pular o plano porque "a issue é simples" | Toda issue gera plano. É o que a revisão final valida e o que a contagem lê. |
 | Chamar `superpowers:brainstorming` | O gate dela é o que este loop remove. |
 | Pegar issue de M3 do `slate-api` antes da suite de invariantes | Bloqueio duro. Nenhum endpoint antes das três invariantes verdes. |
 | Pegar issue de `slate-web` M2 antes do OpenAPI publicado | Bloqueio duro. Sem contrato tipado a UI vira retrabalho. |
@@ -348,7 +376,7 @@ Invariante 2 escrita e falhando (vermelho esperado). Falta o filtro
 | Abrir o PR sem `Closes #<n>` | É o que fecha a issue no merge. |
 | Fechar a issue à mão | Quem fecha é o merge. |
 | `git add -A` | Caminho a caminho. Há artefatos não versionados no checkout. |
-| Abrir o PR sem revisão contra a spec | O PR chega revisado, não cru. |
+| Abrir o PR sem revisão contra o plano | O PR chega revisado, não cru. |
 | Segunda onda de correção até zerar achados | Uma onda, uma re-review. O resto vira linha no corpo do PR. |
 | Apresentar o menu do `finishing-a-development-branch` | Opção 2 já escolhida. Menu é gate. |
 | Marcar `entregue` quando o PR abre | Entregue é CI verde. |
