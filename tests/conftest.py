@@ -7,9 +7,14 @@ from app.core.config import get_settings
 from app.main import app
 
 
+@pytest.fixture(autouse=True)
+def _clear_settings_cache() -> Iterator[None]:
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.fixture
 def client() -> Iterator[TestClient]:
-    get_settings.cache_clear()
     with TestClient(app) as test_client:
         yield test_client
-    get_settings.cache_clear()

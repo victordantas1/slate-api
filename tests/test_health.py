@@ -4,6 +4,14 @@ from fastapi.testclient import TestClient
 from app.core.config import get_settings
 
 
+def test_get_settings_cache_does_not_leak_across_tests(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "leaked")
+
+    assert get_settings().environment == "leaked"
+
+
 def test_health_returns_ok(client: TestClient) -> None:
     response = client.get("/health")
 
