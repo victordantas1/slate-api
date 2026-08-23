@@ -7,32 +7,42 @@
 - **milestone:** M1 · Fundação
 - **rota:** writing-plans
 - **execucao:** 3 tarefas / 12 arquivos → subagent-driven-development
-- **fase:** ci
+- **fase:** entregue
 - **branch:** claude/wonderful-fermi-cv4zih (base main, sha 6876a94) — branch
   designada pelo ambiente desta execução, que tem precedência sobre a
   convenção `feat/<n>-<slug>` da skill
-- **pr:** https://github.com/victordantas1/slate-api/pull/27 (draft)
-- **ci:** repo ainda sem `.github/workflows/` — fase de CI a confirmar
-- **atualizado:** 2026-08-23T00:20Z
+- **pr:** https://github.com/victordantas1/slate-api/pull/27 (draft, `status:review`)
+- **ci:** fase pulada — repo sem `.github/workflows/`; `list_workflows` e
+  `get_check_runs` no sha 6876a94 retornaram zero. Configurar CI é escopo da
+  issue #25 (deploy no Render), não desta.
+- **atualizado:** 2026-08-23T00:25Z
 
 ## Onde parei
 
-PR #27 aberto em draft, issue #1 com label `status:review`. As três tarefas
-do SDD fecharam com revisão limpa cada uma. A revisão final de branch inteira
-deu "ready to open as PR" com 0 Critical, 1 Important e 6 Minor; a onda única
-de correção levou o Important (cache `lru_cache` de `get_settings` vazando
-entre testes, agora coberto por fixture `autouse` mais teste de regressão que
-o revisor provou ser load-bearing), o `.gitignore` `.env*`, o gate de mypy
-ampliado para `tests/` e a correção do texto do plano. Re-revisão escopada
-aprovou itens 1, 2 e 4 e reprovou o 3 por duas linhas obsoletas no plano;
-completadas em `6876a94`.
+Execução encerrada com a issue #1 entregue. PR #27 aberto em draft contra
+`main`, com `Closes #1`; issue com label `status:review`. Quem fecha a issue é
+o merge.
 
-Gates verdes conferidos por mim no HEAD: `ruff check .`, `ruff format --check .`,
-`mypy app tests` (strict, 12 arquivos), `pytest -q` (3 testes, sem warnings).
+As três tarefas do SDD fecharam com revisão limpa cada uma. A revisão final de
+branch inteira deu "ready to open as PR" com 0 Critical, 1 Important e 6 Minor,
+tendo verificado os quatro critérios de aceite por execução em clone limpo. A
+onda única de correção levou o Important (cache `lru_cache` de `get_settings`
+vazando entre testes — agora fixture `autouse` mais teste de regressão que o
+revisor provou ser load-bearing removendo o `autouse` numa cópia e vendo
+vermelho), o `.gitignore` `.env*`, o gate de mypy ampliado para `tests/` e a
+correção do texto do plano. A re-revisão escopada reprovou o item 3 por duas
+linhas obsoletas no plano; completadas em `6876a94`.
 
-Falta: confirmar a fase de CI. O repositório não tem `.github/workflows/`
-(configurar CI é escopo da issue #25, de deploy), então provavelmente não há
-check a aguardar — a confirmar no PR antes de marcar `entregue`.
+Gates verdes conferidos por mim no HEAD da branch: `ruff check .`,
+`ruff format --check .`, `mypy app tests` (strict, 12 arquivos), `pytest -q`
+(3 testes, sem warnings).
+
+## Próxima execução
+
+A #2 (Conexão com Supabase e setup do Alembic) declara `## Depende de` a #1, e
+a #1 só fecha no merge do PR #27. Enquanto o PR estiver aberto, a #2 está com
+dependência aberta e fica fora da fila — a próxima elegível é a de menor número
+em M1 sem dependência pendente.
 
 ## Pressupostos
 - Spec `docs/superpowers/specs/2026-08-22-slate-design.md` citada pela issue
