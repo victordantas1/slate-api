@@ -6,12 +6,12 @@
 - **plano:** docs/plans/2-conexao-supabase-alembic.md
 - **milestone:** M1 · Fundação
 - **rota:** writing-plans
-- **execucao:** (a definir após o plano)
-- **fase:** analise
-- **branch:** (a criar)
+- **execucao:** 6 tarefas / 12 arquivos → subagent-driven-development
+- **fase:** implementacao
+- **branch:** chore/2-conexao-supabase-alembic (base main, sha 8f0f267)
 - **pr:** (nenhum ainda)
 - **ci:** (não chegou nesta fase)
-- **atualizado:** 2026-08-23T00:40Z
+- **atualizado:** 2026-08-23T00:55Z
 
 ## Onde parei
 
