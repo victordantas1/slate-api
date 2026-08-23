@@ -1,8 +1,8 @@
 """household member external_holder
 
-Revision ID: be5dfcccec1b
+Revision ID: 019fca530b88
 Revises:
-Create Date: 2026-08-23 05:36:58.363762
+Create Date: 2026-08-23 05:45:22.975454
 
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "be5dfcccec1b"
+revision: str = "019fca530b88"
 down_revision: str | Sequence[str] | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -25,7 +25,12 @@ def upgrade() -> None:
         "household",
         sa.Column("id", sa.UUID(), server_default=sa.text("gen_random_uuid()"), nullable=False),
         sa.Column("name", sa.String(length=120), nullable=False),
-        sa.Column("created_at", sa.DateTime(), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_household")),
     )
     op.create_table(
@@ -33,7 +38,12 @@ def upgrade() -> None:
         sa.Column("id", sa.UUID(), server_default=sa.text("gen_random_uuid()"), nullable=False),
         sa.Column("household_id", sa.UUID(), nullable=False),
         sa.Column("name", sa.String(length=120), nullable=False),
-        sa.Column("created_at", sa.DateTime(), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(
             ["household_id"],
             ["household.id"],
@@ -52,7 +62,12 @@ def upgrade() -> None:
         sa.Column("household_id", sa.UUID(), nullable=False),
         sa.Column("supabase_user_id", sa.UUID(), nullable=False),
         sa.Column("name", sa.String(length=120), nullable=False),
-        sa.Column("created_at", sa.DateTime(), server_default=sa.text("now()"), nullable=False),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            server_default=sa.text("now()"),
+            nullable=False,
+        ),
         sa.ForeignKeyConstraint(
             ["household_id"],
             ["household.id"],
