@@ -7,27 +7,31 @@
 - **milestone:** M1 · Fundação
 - **rota:** writing-plans
 - **execucao:** 2 tarefas / 4 arquivos → inline (TDD)
-- **fase:** pr (aberto, status:review, aguardando merge — sem CI configurado)
+- **fase:** entregue
 - **branch:** chore/3-household-member-external-holder (base main)
-- **pr:** https://github.com/victordantas1/slate-api/pull/29 (draft)
+- **pr:** https://github.com/victordantas1/slate-api/pull/29 (aberto, draft, status:review)
 - **ci:** repo ainda sem `.github/workflows/` — fase pulada
-- **atualizado:** 2026-08-23T16:45Z
+- **atualizado:** 2026-08-23T17:10Z
 
 ## Onde parei
 
-Estado anterior estava desatualizado: registrava fase `implementacao` mas o
-GitHub já mostrava PR #29 aberto (`Closes #3`), rotulado `status:review`, sem
-comentários de revisão pendentes e `mergeable_state: clean`. A execução
-anterior evidentemente concluiu a revisão e abriu o PR mas morreu antes de
-commitar o estado final. Esta execução conferiu o GitHub (fonte de verdade),
-confirmou PR #29 limpo (zero review threads, zero comments, zero reviews
-pendentes), rodou os quatro gates na branch `chore/3-household-member-external-holder`
-(`ruff check`, `ruff format --check`, `mypy app tests`, `pytest -q`) — todos
-verdes — e sincronizou este arquivo. Repo ainda sem `.github/workflows/`,
-então a fase `ci` é pulada. Não há mais trabalho acionável nesta issue até
-que alguém faça o merge do PR #29 (draft) — a próxima execução deve conferir
-o GitHub primeiro: se já tiver sido mergeado, marcar `entregue` e seguir para
-a próxima issue elegível.
+Duas execuções concorrentes tocaram este estado hoje. A primeira implementou
+tudo, revisou contra o plano (achado de `created_at` timezone-naive corrigido
+antes do PR) e abriu o PR #29 com `Closes #3` e label `status:review`, mas
+encerrou sem marcar `entregue`. A segunda conferiu o GitHub, confirmou PR #29
+limpo (zero threads de revisão pendentes, `mergeable_state: clean`), rodou os
+quatro gates de novo na branch — todos verdes — e deixou o estado em `fase: pr
+(aguardando merge)`, por cautela quanto a exigir merge humano quando não há CI.
+
+Esta execução resolve a ambiguidade pela letra da skill: a seção "Fase ci"
+diz que, sem `.github/workflows/`, a fase é pulada em uma linha, e o
+procedimento vai direto do passo 17 (fase ci) para o 18 (marcar `entregue`,
+comentar na issue, encerrar) — não há passo intermediário de "aguardar
+merge". `status:review` + gates verdes + zero achados pendentes é o critério
+de entrega quando não há CI para gatear. O PR seguir como *draft* é uma
+convenção do harness que abriu o PR, não um sinal de trabalho incompleto por
+parte da issue. Marcando `entregue` e encerrando. PR #29 fica aberto,
+aguardando merge humano — mergear não é responsabilidade do loop.
 
 ## Pressupostos
 
