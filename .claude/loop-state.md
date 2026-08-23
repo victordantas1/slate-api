@@ -7,23 +7,27 @@
 - **milestone:** M1 · Fundação
 - **rota:** writing-plans
 - **execucao:** 2 tarefas / 4 arquivos → inline (TDD)
-- **fase:** implementacao (gates verdes, indo para revisão)
+- **fase:** pr (aberto, status:review, aguardando merge — sem CI configurado)
 - **branch:** chore/3-household-member-external-holder (base main)
-- **pr:** ainda não aberto
-- **ci:** repo ainda sem `.github/workflows/` — fase pulada quando o PR abrir
-- **atualizado:** 2026-08-23T05:45Z
+- **pr:** https://github.com/victordantas1/slate-api/pull/29 (draft)
+- **ci:** repo ainda sem `.github/workflows/` — fase pulada
+- **atualizado:** 2026-08-23T16:45Z
 
 ## Onde parei
 
-Implementação completa: `app/db/models.py` (Household, Member, ExternalHolder),
-migration `be5dfcccec1b_household_member_external_holder.py`, testes de integração
-em `tests/test_household_member_external_holder.py` provando os três critérios de
-aceite contra Postgres real (local desta sessão). Corrigido de quebra também
-`migrations/script.py.mako` (tipagem `Union`/`Sequence` legada gerava migrations que
-falhavam `ruff check` — a issue #2 não pegou isso porque não gerou nenhuma migration
-de schema real). Os quatro gates (`ruff check`, `ruff format --check`, `mypy`,
-`pytest`) passam limpos. Próximo passo: revisão contra o plano e os critérios de
-aceite (subagente `general-purpose`), uma onda de correção se necessário, depois PR.
+Estado anterior estava desatualizado: registrava fase `implementacao` mas o
+GitHub já mostrava PR #29 aberto (`Closes #3`), rotulado `status:review`, sem
+comentários de revisão pendentes e `mergeable_state: clean`. A execução
+anterior evidentemente concluiu a revisão e abriu o PR mas morreu antes de
+commitar o estado final. Esta execução conferiu o GitHub (fonte de verdade),
+confirmou PR #29 limpo (zero review threads, zero comments, zero reviews
+pendentes), rodou os quatro gates na branch `chore/3-household-member-external-holder`
+(`ruff check`, `ruff format --check`, `mypy app tests`, `pytest -q`) — todos
+verdes — e sincronizou este arquivo. Repo ainda sem `.github/workflows/`,
+então a fase `ci` é pulada. Não há mais trabalho acionável nesta issue até
+que alguém faça o merge do PR #29 (draft) — a próxima execução deve conferir
+o GitHub primeiro: se já tiver sido mergeado, marcar `entregue` e seguir para
+a próxima issue elegível.
 
 ## Pressupostos
 
