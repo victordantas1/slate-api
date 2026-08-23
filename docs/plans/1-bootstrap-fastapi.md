@@ -20,7 +20,8 @@ Criados:
 - `.env.example` — variáveis documentadas, nenhum segredo real
 - `CLAUDE.md` — comandos de gate, base e convenções (tarefa implícita da issue de bootstrap)
 - `app/__init__.py`
-- `app/main.py` — factory da app e registro de routers
+- `app/main.py` — instância da app em nível de módulo (`app = FastAPI(...)`, exigido
+  por `uvicorn app.main:app`) e registro de routers
 - `app/core/__init__.py`
 - `app/core/config.py` — `Settings` via pydantic-settings
 - `app/api/__init__.py`
