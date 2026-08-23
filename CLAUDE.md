@@ -20,7 +20,7 @@ Nada mais é necessário num checkout novo.
 ```
 uv run ruff check .
 uv run ruff format --check .
-uv run mypy app
+uv run mypy app tests
 uv run pytest -q
 ```
 
