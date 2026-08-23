@@ -73,6 +73,6 @@ dependência extra, contrato público inalterado.
 | Critério de aceite da issue | O que prova |
 | --- | --- |
 | `uvicorn app.main:app` sobe e `/health` responde 200 | `tests/test_health.py::test_health_returns_ok` — `TestClient(app)` faz GET `/health`, espera 200 e `status == "ok"`. O client importa `app.main:app`, então uma app que não sobe quebra o teste. Além disso, subida real via `uvicorn` verificada manualmente antes do PR. |
-| `ruff check` e `mypy` passam limpos | `ruff check .`, `ruff format --check .` e `mypy app` rodados como gate antes do commit. |
+| `ruff check` e `mypy` passam limpos | `ruff check .`, `ruff format --check .` e `mypy app tests` rodados como gate antes do commit. |
 | `pytest` roda | `pytest -q` verde com os testes acima. |
-| Nenhum segredo no repositório; `.env.example` documentado | `.env.example` só com placeholders; `.gitignore` cobre `.env`; nenhum valor real no diff. |
+| Nenhum segredo no repositório; `.env.example` documentado | `.env.example` só com placeholders; `.gitignore` cobre `.env*` (com `.env.example` explicitamente rastreado); nenhum valor real no diff. |
