@@ -27,6 +27,7 @@ Criados:
 - `migrations/script.py.mako` — template padrão do `alembic init`
 - `migrations/versions/.gitkeep` — nenhuma migration de schema ainda; issues #3–#6
   preenchem
+- `tests/test_config.py` — defaults de pool e configurabilidade via env
 - `tests/test_db_session.py` — kwargs do pool a partir das settings, sem tocar rede
 - `tests/test_db_migrations.py` — `upgrade head` e `autogenerate` contra Postgres real,
   pulado se `DATABASE_URL` não estiver configurada
@@ -105,6 +106,9 @@ ou ≥ 5 arquivos → subagent-driven-development.**
 
 ## 5. Testes
 
+- `test_db_pool_settings_have_conservative_defaults` /
+  `test_db_pool_settings_are_configurable_via_env` — defaults de pool e
+  configurabilidade via env (`tests/test_config.py`).
 - `_engine_kwargs` mapeia cada campo de `Settings` para o kwarg correto do
   `create_async_engine` (critério "pool dimensionado").
 - `build_async_engine` levanta `RuntimeError` sem `DATABASE_URL` configurada.
