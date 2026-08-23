@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     environment: str = "development"
     database_url: str | None = None
     supabase_jwt_secret: str | None = None
+    db_pool_size: int = 5
+    db_max_overflow: int = 5
+    db_pool_recycle_seconds: int = 1800
+    db_statement_cache_size: int = 0
 
 
 @lru_cache
