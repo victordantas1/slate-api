@@ -34,6 +34,15 @@ uv run uvicorn app.main:app --reload
 
 `/health` é o endpoint de liveness.
 
+## Migrations
+
+```
+uv run alembic upgrade head
+uv run alembic revision --autogenerate -m "<mensagem>"
+```
+
+A URL de conexão vem de `DATABASE_URL` no `.env`, nunca de `alembic.ini`.
+
 ## Estrutura
 
 | Pacote | Papel |
@@ -44,9 +53,11 @@ uv run uvicorn app.main:app --reload
 | `app/domain` | Regras puras, sem HTTP e sem banco |
 | `app/services` | Orquestração entre domínio e banco |
 | `tests/` | Testes |
+| `migrations/` | Histórico de migrações Alembic |
 
-`app/db`, `app/domain` e `app/services` estão vazios de propósito nesta fase —
-serão preenchidos pelas issues seguintes.
+`app/db` contém a infraestrutura de conexão (engine, `Base`), e o histórico de
+migrações fica em `migrations/` (raiz do repo). `app/domain` e `app/services` estão
+vazios de propósito nesta fase — serão preenchidos pelas issues seguintes.
 
 ## Convenções
 
