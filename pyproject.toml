@@ -18,6 +18,7 @@ dev = [
     "pytest",
     "pytest-asyncio",
     "httpx",
+    "testcontainers[postgres]>=4.15.0",
 ]
 
 [build-system]
