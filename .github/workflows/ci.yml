@@ -5,9 +5,13 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
+# Um push novo no PR cancela a rodada anterior; em main cada commit roda até o fim.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint:
