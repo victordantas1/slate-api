@@ -1,7 +1,16 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    SmallInteger,
+    String,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -55,6 +64,57 @@ class ExternalHolder(Base):
         index=True,
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), nullable=False
+    )
+
+
+class Account(Base):
+    __tablename__ = "account"
+    __table_args__ = (
+        CheckConstraint("kind IN ('checking', 'credit_card', 'store_credit')", name="kind"),
+        CheckConstraint("holder_kind IN ('member', 'external')", name="holder_kind"),
+        CheckConstraint(
+            "(holder_kind = 'member') = (owner_member_id IS NOT NULL)", name="member_holder"
+        ),
+        CheckConstraint(
+            "(holder_kind = 'external') = (external_holder_id IS NOT NULL)",
+            name="external_holder",
+        ),
+        CheckConstraint("closing_day BETWEEN 1 AND 31", name="closing_day_range"),
+        CheckConstraint("due_day BETWEEN 1 AND 31", name="due_day_range"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    household_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("household.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    holder_kind: Mapped[str] = mapped_column(String(10), nullable=False)
+    owner_member_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("member.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    external_holder_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("external_holder.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    closing_day: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    due_day: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    first_installment_offset: Mapped[int] = mapped_column(
+        SmallInteger, server_default=text("1"), nullable=False
+    )
+    archived: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), nullable=False
     )
