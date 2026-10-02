@@ -164,7 +164,8 @@ async def _table_names() -> set[str]:
 
 def test_account_migration_downgrade_runs(alembic_config: Config) -> None:
     command.upgrade(alembic_config, "head")
-    command.downgrade(alembic_config, "-1")
+    # Revisão anterior à de account, fixa: `-1` passa a reverter quem vier depois dela.
+    command.downgrade(alembic_config, "019fca530b88")
     tables = asyncio.run(_table_names())
     assert "account" not in tables
     assert {"household", "member", "external_holder"} <= tables
