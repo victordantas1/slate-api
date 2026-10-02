@@ -3,8 +3,7 @@
 1. Soma das parcelas: as entries de um parcelamento somam exatamente o `total_amount`,
    uma por parcela, com competências consecutivas.
 2. Imutabilidade de `pago`: nenhuma operação do motor altera uma entry paga.
-3. Idempotência do horizonte: rodar o horizonte de recorrentes N vezes == 1 vez. Entra
-   com o horizonte (#11), que é a operação que ela descreve.
+3. Idempotência do horizonte: rodar o horizonte de recorrentes N vezes == 1 vez.
 
 As invariantes são verificadas no banco (SQL sobre o que foi gravado), não no plano em
 memória: é o que a tela de mês vai ler.
@@ -23,6 +22,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Commitment, Entry
+from app.services.materialization import create_recurring_commitment, extend_recurring_horizon
 from tests.factories import HouseholdCtx, entries_of, make_commitment, make_household
 
 MAX_AMOUNT = Decimal("9999999999.99")  # Numeric(12, 2)
@@ -211,12 +211,43 @@ async def _failed_materialization(session: AsyncSession, household: HouseholdCtx
         await make_commitment(session, household, category_id=other.category_id)
 
 
-# Toda operação do motor que grava entries entra aqui. O horizonte de recorrentes (#11)
-# e a cascata de edição (#12) acrescentam as suas.
+TODAY = date(2026, 10, 2)
+
+
+async def _create_recurring(
+    session: AsyncSession, household: HouseholdCtx, **overrides: Any
+) -> Commitment:
+    values: dict[str, Any] = {
+        "household_id": household.household_id,
+        "account_id": household.account_id,
+        "category_id": household.category_id,
+        "description": "Streaming",
+        "purchase_date": date(2026, 10, 10),
+        "recurring_amount": Decimal("39.90"),
+        "end_date": None,
+        "today": TODAY,
+    }
+    values.update(overrides)
+    return await create_recurring_commitment(session, **values)
+
+
+async def _materialize_recurring(session: AsyncSession, household: HouseholdCtx) -> None:
+    await _create_recurring(session, household)
+
+
+async def _extend_horizon(session: AsyncSession, household: HouseholdCtx) -> None:
+    await extend_recurring_horizon(session, today=TODAY)
+    await extend_recurring_horizon(session, today=date(2027, 10, 2))
+
+
+# Toda operação do motor que grava entries entra aqui. A cascata de edição (#12)
+# acrescenta a sua.
 ENGINE_OPERATIONS: dict[str, EngineOperation] = {
     "materializa-outro-parcelamento": _materialize_same_account,
     "materializa-single": _materialize_single_same_month,
     "materializacao-que-falha": _failed_materialization,
+    "materializa-recorrente": _materialize_recurring,
+    "estende-horizonte": _extend_horizon,
 }
 
 
@@ -244,8 +275,10 @@ async def test_invariant_2_engine_never_touches_paid_entries(
 ) -> None:
     commitment = await make_commitment(db_session, household, installment_count=6)
     await _pay(db_session, commitment.id, [1, 2, 4])
+    recurring = await _create_recurring(db_session, household)
+    await _pay(db_session, recurring.id, [1, 3])
     before = await paid_snapshot(db_session, household.household_id)
-    assert len(before) == 3
+    assert len(before) == 5
 
     await operation(db_session, household)
 
@@ -267,3 +300,44 @@ async def test_invariant_2_snapshot_sees_any_change_to_a_paid_entry(
     )
 
     assert await paid_snapshot(db_session, household.household_id) != before
+
+
+# --- Invariante 3 -------------------------------------------------------------------
+
+
+async def household_entries(session: AsyncSession, household_id: uuid.UUID) -> list[Row[Any]]:
+    """Todas as colunas de todas as entries da household, em ordem estável."""
+    query = select(Entry.__table__).where(Entry.household_id == household_id).order_by(Entry.id)
+    return list((await session.execute(query)).all())
+
+
+@pytest.mark.parametrize("runs", [2, 5])
+async def test_invariant_3_horizon_n_times_equals_once(
+    db_session: AsyncSession, household: HouseholdCtx, runs: int
+) -> None:
+    # Household mista: recorrentes com e sem fim, um pago, um editado, um cancelado e um
+    # parcelamento, que o horizonte não deve tocar.
+    open_ended = await _create_recurring(db_session, household)
+    await _create_recurring(
+        db_session, household, description="Academia", end_date=date(2027, 6, 30)
+    )
+    cancelled = await _create_recurring(db_session, household, description="Revista")
+    await db_session.execute(
+        update(Commitment).where(Commitment.id == cancelled.id).values(status="cancelled")
+    )
+    await make_commitment(db_session, household, installment_count=10)
+    await _pay(db_session, open_ended.id, [1])
+    await db_session.execute(
+        update(Entry)
+        .where(Entry.commitment_id == open_ended.id, Entry.seq == 2)
+        .values(amount=Decimal("19.90"), edited_manually=True)
+    )
+    later = date(2027, 3, 15)
+
+    first = await extend_recurring_horizon(db_session, today=later)
+    once = await household_entries(db_session, household.household_id)
+    again = [await extend_recurring_horizon(db_session, today=later) for _ in range(runs - 1)]
+
+    assert first > 0  # o horizonte andou: o teste não é vacuamente idempotente
+    assert again == [0] * (runs - 1)
+    assert await household_entries(db_session, household.household_id) == once

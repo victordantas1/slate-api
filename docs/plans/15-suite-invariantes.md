@@ -18,7 +18,9 @@ como testes de primeira classe contra Postgres real.
 - `tests/conftest.py` — tocado: fixture `household`.
 - `tests/test_materialization.py` — tocado: passa a usar a factory no lugar do `_ctx`
   local.
-- `tests/test_invariants.py` — criado: invariantes 1 e 2.
+- `tests/test_invariants.py` — criado: invariantes 1, 2 e 3.
+- `tests/test_recurring_horizon.py` — tocado: importa a factory no lugar dos helpers
+  privados de `test_materialization.py`.
 
 ## 3. Tarefas
 
@@ -26,19 +28,17 @@ como testes de primeira classe contra Postgres real.
 2. Invariante 1 verificada em SQL sobre o que foi gravado, com valores adversariais,
    bordas de calendário, o teto de `SmallInteger` e uma bateria aleatória de semente fixa.
 3. Invariante 2 como snapshot de todas as colunas das entries pagas antes e depois de
-   cada operação do motor, numa lista que #11 e #12 estendem.
+   cada operação do motor, numa lista que #12 estende.
+4. Invariante 3 sobre uma household mista, com o horizonte da #11.
 
 ## 4. Pressupostos
 
 - O que a #15 já tinha em main fica como está: CI (`.github/workflows/ci.yml`), fixtures
   de testcontainers (`tests/conftest.py`) e RLS com duas households (`tests/test_rls.py`,
   da #7).
-- Invariante 2 hoje cobre as operações que existem (materialização de parcelamento e
-  single, inclusive a que falha). A cascata de edição (#12) é a operação que ela mais
-  protege e entra na lista `ENGINE_OPERATIONS` com a #12.
-- Invariante 3 (idempotência do horizonte) não tem operação para testar até o horizonte
-  de recorrentes (#11) existir; a #11 a traz como critério de aceite próprio. Por isso o
-  PR usa `Refs #15`, não `Closes`.
+- Invariante 2 cobre as operações que existem (parcelamento, single, a que falha,
+  recorrente e horizonte). A cascata de edição (#12) é a operação que ela mais protege e
+  entra na lista `ENGINE_OPERATIONS` com a #12. Por isso o PR usa `Refs #15`.
 - Bateria aleatória com `random.Random(15)` em vez de hypothesis: hypothesis não combina
   com fixtures async por teste (`db_session`), e a semente fixa mantém falhas
   reproduzíveis.
@@ -51,5 +51,7 @@ como testes de primeira classe contra Postgres real.
   faltando; total com 3 casas e acima do teto recusados sem gravar nada.
 - Invariante 2: snapshot das pagas idêntico depois de cada operação do motor; controle que
   mostra o snapshot mudando quando uma paga é alterada.
+- Invariante 3: em household com recorrentes com e sem fim, cancelado, pago, editado e um
+  parcelamento, a 2ª..Nª rodada do horizonte insere 0 e deixa todas as entries iguais.
 - Conferido por mutação: com o resíduo removido de `split_installments`, 21 testes da
   invariante 1 falham.
