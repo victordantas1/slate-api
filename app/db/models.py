@@ -118,3 +118,44 @@ class Account(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), nullable=False
     )
+
+
+class Category(Base):
+    """Categoria de dois níveis. O terceiro nível e o delete físico são barrados por
+    triggers na migration (`category_enforce_hierarchy`, `category_prevent_delete`),
+    que o autogenerate não enxerga."""
+
+    __tablename__ = "category"
+    __table_args__ = (
+        CheckConstraint("direction IN ('expense', 'income')", name="direction"),
+        CheckConstraint("parent_id <> id", name="not_own_parent"),
+        UniqueConstraint(
+            "household_id",
+            "parent_id",
+            "name",
+            name="uq_category_household_id_parent_id_name",
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
+    )
+    household_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("household.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    parent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("category.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    direction: Mapped[str] = mapped_column(String(10), nullable=False)
+    archived: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), nullable=False
+    )
