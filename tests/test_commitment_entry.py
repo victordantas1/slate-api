@@ -232,6 +232,10 @@ async def _check_kind_amounts(conn: AsyncConnection, ctx: _Ctx) -> None:
         ({"end_date": date(2027, 1, 1)}, "ck_commitment_end_date_only_recurring"),
         ({**recurring, "end_date": date(2026, 1, 1)}, "ck_commitment_end_date_after_start"),
         ({"status": "paused"}, "ck_commitment_status"),
+        (
+            {**recurring, "recurring_amount": Decimal("0")},
+            "ck_commitment_recurring_amount_positive",
+        ),
     ]
     for values, constraint in rejected:
         await _assert_rejected(
@@ -367,26 +371,37 @@ def test_entry_indexes_exist(alembic_config: Config) -> None:
     assert ["household_id", "category_id", "competencia"] in columns
 
 
-async def _tables() -> set[str]:
+async def _schema_objects() -> tuple[set[str], set[str]]:
     engine = create_async_engine(_database_url())
     try:
         async with engine.connect() as conn:
-            rows = await conn.execute(
+            tables = await conn.execute(
                 text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
             )
-            return {r[0] for r in rows}
+            constraints = await conn.execute(text("SELECT conname FROM pg_constraint"))
+            return {r[0] for r in tables}, {r[0] for r in constraints}
     finally:
         await engine.dispose()
 
 
+async def _tables() -> set[str]:
+    return (await _schema_objects())[0]
+
+
+COMPOSITE_FK_TARGETS = {"uq_account_id_household_id", "uq_category_id_household_id"}
+
+
 def test_commitment_entry_migration_downgrade_runs(alembic_config: Config) -> None:
     command.upgrade(alembic_config, "head")
-    assert {"commitment", "entry"} <= asyncio.run(_tables())
+    tables, constraints = asyncio.run(_schema_objects())
+    assert {"commitment", "entry"} <= tables
+    assert COMPOSITE_FK_TARGETS <= constraints
 
     # Revisão anterior (category), fixa para não depender de quem é head.
     command.downgrade(alembic_config, "9fd2e8412e8f")
-    tables = asyncio.run(_tables())
+    tables, constraints = asyncio.run(_schema_objects())
     assert not {"commitment", "entry"} & tables
+    assert not COMPOSITE_FK_TARGETS & constraints
     assert {"account", "category"} <= tables
 
     command.upgrade(alembic_config, "head")

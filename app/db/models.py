@@ -193,7 +193,7 @@ class Commitment(Base):
         ),
         CheckConstraint("total_amount > 0", name="total_amount_positive"),
         CheckConstraint("installment_count >= 1", name="installment_count_positive"),
-        CheckConstraint("recurring_amount >= 0", name="recurring_amount_not_negative"),
+        CheckConstraint("recurring_amount > 0", name="recurring_amount_positive"),
         CheckConstraint("end_date IS NULL OR kind = 'recurring'", name="end_date_only_recurring"),
         CheckConstraint("end_date >= purchase_date", name="end_date_after_start"),
         ForeignKeyConstraint(

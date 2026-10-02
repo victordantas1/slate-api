@@ -73,7 +73,7 @@ def upgrade() -> None:
             "installment_count >= 1", name=op.f("ck_commitment_installment_count_positive")
         ),
         sa.CheckConstraint(
-            "recurring_amount >= 0", name=op.f("ck_commitment_recurring_amount_not_negative")
+            "recurring_amount > 0", name=op.f("ck_commitment_recurring_amount_positive")
         ),
         sa.CheckConstraint("total_amount > 0", name=op.f("ck_commitment_total_amount_positive")),
         sa.ForeignKeyConstraint(

@@ -40,7 +40,7 @@ mensal que a tela de mês lê), com as UNIQUE, CHECK e índices dos critérios d
 | `purchase_date` | date | não | data da compra; início da recorrência |
 | `total_amount` | Numeric(12,2) | sim | NULL ⟺ `recurring`; `> 0` |
 | `installment_count` | SmallInteger | sim | NULL ⟺ `recurring`; `>= 1`; `single` ⟹ `= 1` |
-| `recurring_amount` | Numeric(12,2) | sim | NOT NULL ⟺ `recurring`; `>= 0` |
+| `recurring_amount` | Numeric(12,2) | sim | NOT NULL ⟺ `recurring`; `> 0` |
 | `end_date` | date | sim | só `recurring`; `>= purchase_date` |
 | `status` | String(10) | não | `active` \| `cancelled` \| `settled`, default `active` |
 | `created_at` | timestamptz | não | `now()` |
