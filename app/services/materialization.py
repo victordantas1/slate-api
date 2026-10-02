@@ -137,6 +137,9 @@ async def extend_recurring_horizon(
             & (Account.household_id == Commitment.household_id),
         )
         .where(Commitment.kind == "recurring", Commitment.status == "active")
+        # Trava contra uma cascata concorrente que mude `recurring_amount` entre a leitura
+        # e o INSERT: o valor velho ficaria para sempre, já que o conflito é descartado.
+        .with_for_update(of=Commitment)
     )
     if commitment_ids is not None:
         query = query.where(Commitment.id.in_(list(commitment_ids)))
