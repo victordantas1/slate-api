@@ -837,6 +837,210 @@
           }
         }
       }
+    },
+    "/entries/{entry_id}": {
+      "patch": {
+        "tags": [
+          "entries"
+        ],
+        "summary": "Update Entry",
+        "description": "Edita `amount` e/ou `category_id` com a cascata do motor.\n\n- `this`: só esta entry, que passa a `edited_manually` e deixa de seguir o commitment.\n- `forward`: esta e as seguintes do commitment, menos pagas e editadas à mão.\n- `all`: todas do commitment, menos pagas e editadas à mão.\n\nEm `forward` e `all` o commitment também muda, para o horizonte futuro herdar.",
+        "operationId": "update_entry_entries__entry_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "entry_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Entry Id"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "this",
+                "forward",
+                "all"
+              ],
+              "type": "string",
+              "description": "this, forward ou all; sem padrão",
+              "title": "Scope"
+            },
+            "description": "this, forward ou all; sem padrão"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntryUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryUpdateOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entry não encontrada"
+          },
+          "409": {
+            "description": "Entry já está paga"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/entries/{entry_id}/pay": {
+      "post": {
+        "tags": [
+          "entries"
+        ],
+        "summary": "Pay Entry",
+        "description": "Marca a entry como `pago`. Sem `paid_at`, usa o horário do banco.",
+        "operationId": "pay_entry_entries__entry_id__pay_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "entry_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Entry Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/EntryPay"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entry não encontrada"
+          },
+          "409": {
+            "description": "Entry já está paga"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/months/{month}": {
+      "get": {
+        "tags": [
+          "months"
+        ],
+        "summary": "Get Month",
+        "description": "Entries da competência agrupadas por conta, com entradas, saídas, saldo e o total\ncomprometido em parcelas, no mês e por conta. Mês sem lançamento devolve listas\nvazias e totais zerados.",
+        "operationId": "get_month_months__month__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "month",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+              "description": "Competência, yyyy-mm",
+              "title": "Month"
+            },
+            "description": "Competência, yyyy-mm"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonthOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1717,6 +1921,76 @@
         ],
         "title": "EntryOut"
       },
+      "EntryPay": {
+        "properties": {
+          "paid_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          }
+        },
+        "type": "object",
+        "title": "EntryPay"
+      },
+      "EntryUpdate": {
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          }
+        },
+        "type": "object",
+        "title": "EntryUpdate"
+      },
+      "EntryUpdateOut": {
+        "properties": {
+          "affected": {
+            "type": "integer",
+            "title": "Affected",
+            "description": "Quantas entries a edição alterou"
+          },
+          "entry": {
+            "$ref": "#/components/schemas/EntryOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "affected",
+          "entry"
+        ],
+        "title": "EntryUpdateOut"
+      },
       "ExternalHolderIn": {
         "properties": {
           "name": {
@@ -1802,6 +2076,194 @@
         ],
         "title": "HealthResponse"
       },
+      "MonthAccountOut": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Account Id"
+          },
+          "account_name": {
+            "type": "string",
+            "title": "Account Name"
+          },
+          "account_kind": {
+            "type": "string",
+            "enum": [
+              "checking",
+              "credit_card",
+              "store_credit"
+            ],
+            "title": "Account Kind"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/TotalsOut"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/MonthEntryOut"
+            },
+            "type": "array",
+            "title": "Entries"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "account_name",
+          "account_kind",
+          "totals",
+          "entries"
+        ],
+        "title": "MonthAccountOut"
+      },
+      "MonthEntryOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "commitment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Commitment Id"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "commitment_kind": {
+            "type": "string",
+            "enum": [
+              "installment",
+              "recurring",
+              "single"
+            ],
+            "title": "Commitment Kind"
+          },
+          "installment_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installment Count"
+          },
+          "category_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Category Id"
+          },
+          "category_name": {
+            "type": "string",
+            "title": "Category Name"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "expense",
+              "income"
+            ],
+            "title": "Direction"
+          },
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "competencia": {
+            "type": "string",
+            "format": "date",
+            "title": "Competencia"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "previsto",
+              "confirmado",
+              "pago"
+            ],
+            "title": "Status"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "fincoach"
+            ],
+            "title": "Source"
+          },
+          "edited_manually": {
+            "type": "boolean",
+            "title": "Edited Manually"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "commitment_id",
+          "description",
+          "commitment_kind",
+          "installment_count",
+          "category_id",
+          "category_name",
+          "direction",
+          "seq",
+          "competencia",
+          "amount",
+          "status",
+          "paid_at",
+          "source",
+          "edited_manually"
+        ],
+        "title": "MonthEntryOut"
+      },
+      "MonthOut": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "title": "Month",
+            "description": "Competência no formato yyyy-mm"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/TotalsOut"
+          },
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/MonthAccountOut"
+            },
+            "type": "array",
+            "title": "Accounts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "month",
+          "totals",
+          "accounts"
+        ],
+        "title": "MonthOut"
+      },
       "SeedOut": {
         "properties": {
           "created": {
@@ -1814,6 +2276,42 @@
           "created"
         ],
         "title": "SeedOut"
+      },
+      "TotalsOut": {
+        "properties": {
+          "income": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Income",
+            "description": "Entradas: entries de categoria `income`"
+          },
+          "expense": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Expense",
+            "description": "Saídas: entries de categoria `expense`"
+          },
+          "balance": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance",
+            "description": "income - expense"
+          },
+          "installments": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Installments",
+            "description": "Total comprometido em parcelas: saídas de commitments `installment`"
+          }
+        },
+        "type": "object",
+        "required": [
+          "income",
+          "expense",
+          "balance",
+          "installments"
+        ],
+        "title": "TotalsOut"
       },
       "ValidationError": {
         "properties": {
