@@ -22,6 +22,11 @@ def horizon_end(today: date, months: int = HORIZON_MONTHS) -> date:
     return _add_months(today.replace(day=1), months)
 
 
+def last_competencia(end_date: date, first_installment_offset: int) -> date:
+    """Competência da última cobrança de um recorrente que termina em `end_date`."""
+    return _add_months(end_date.replace(day=1), first_installment_offset)
+
+
 def plan_recurring(
     purchase_date: date,
     first_installment_offset: int,
@@ -39,7 +44,7 @@ def plan_recurring(
         raise ValueError("until precisa ser o dia 1 do mês")
     last = until
     if end_date is not None:
-        last = min(last, _add_months(end_date.replace(day=1), first_installment_offset))
+        last = min(last, last_competencia(end_date, first_installment_offset))
 
     plan = []
     month = competencia(purchase_date, first_installment_offset, 1)

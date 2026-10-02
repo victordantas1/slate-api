@@ -789,7 +789,7 @@
           "commitments"
         ],
         "summary": "Delete Commitment",
-        "description": "Sem `keep_paid`, apaga o commitment e todas as entries, inclusive as pagas.\n\n`keep_paid=true` é o cancelamento (preserva as pagas, remove as previstas), que\ndepende do motor de cancelamento e por ora responde 501 sem alterar nada.",
+        "description": "Sem `keep_paid`, apaga o commitment e todas as entries, inclusive as pagas.\n\n`keep_paid=true` é o cancelamento: preserva as entries pagas e confirmadas, remove as\nprevistas e o commitment passa a `cancelled`. Só commitment `active` é cancelável.",
         "operationId": "delete_commitment_commitments__commitment_id__delete",
         "security": [
           {
@@ -822,8 +822,8 @@
           "204": {
             "description": "Successful Response"
           },
-          "501": {
-            "description": "keep_paid=true ainda não implementado"
+          "409": {
+            "description": "keep_paid=true num commitment que não está active"
           },
           "422": {
             "description": "Validation Error",
