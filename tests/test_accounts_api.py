@@ -1,3 +1,4 @@
+import asyncio
 import time
 import uuid
 from collections.abc import AsyncIterator
@@ -7,11 +8,12 @@ from typing import Any
 import httpx
 import jwt
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import insert, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.db.models import Account, ExternalHolder, Household, Member
-from app.db.session import get_member_session
+from app.db.session import get_engine, get_member_session
 from app.main import create_app
 
 SECRET = "test-secret-with-at-least-32-bytes!!"
@@ -43,7 +45,8 @@ async def _household(session: AsyncSession) -> Tenant:
     external_id = (
         await session.execute(
             insert(ExternalHolder)
-            .values(household_id=household_id, name="Vó")
+            # Nome único: o teste sob RLS commita, e outros testes buscam "Vó" no banco.
+            .values(household_id=household_id, name=f"Titular {uuid.uuid4().hex[:8]}")
             .returning(ExternalHolder.id)
         )
     ).scalar_one()
@@ -403,3 +406,40 @@ async def test_delete_is_not_allowed_and_account_survives(
         select(Account.id).where(Account.id == uuid.UUID(created["id"]))
     )
     assert still_there is not None
+
+
+def test_crud_through_rls_session(
+    migrated_postgres_url: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sem override: a sessão real roda como `slate_app`, sob as policies de RLS."""
+
+    async def _seed() -> Tenant:
+        engine = create_async_engine(migrated_postgres_url)
+        try:
+            async with engine.begin() as conn:
+                return await _household(AsyncSession(bind=conn))
+        finally:
+            await engine.dispose()
+
+    monkeypatch.setenv("DATABASE_URL", migrated_postgres_url)
+    monkeypatch.setenv("SUPABASE_JWT_SECRET", SECRET)
+    get_engine.cache_clear()
+    try:
+        home, other = asyncio.run(_seed()), asyncio.run(_seed())
+        with TestClient(create_app()) as client:
+            created = client.post("/accounts", json=_member_account(home), headers=home.headers)
+            path = f"/accounts/{created.json()['id']}"
+            patched = client.patch(path, json={"first_installment_offset": 0}, headers=home.headers)
+            foreign = client.post(
+                "/accounts",
+                json=_member_account(home, owner_member_id=str(other.member_id)),
+                headers=home.headers,
+            )
+            hidden = client.get(path, headers=other.headers)
+    finally:
+        get_engine.cache_clear()
+
+    assert created.status_code == 201, created.text
+    assert patched.json()["first_installment_offset"] == 0
+    assert foreign.status_code == 422
+    assert hidden.status_code == 404
