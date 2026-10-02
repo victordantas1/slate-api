@@ -84,6 +84,15 @@ async def _check_third_level(conn: AsyncConnection, household_id: uuid.UUID) -> 
         match="terceiro nível",
     )
 
+    leaf = await _insert_category(
+        conn, household_id=household_id, name="Cinema", parent_id=other_root
+    )
+    await _assert_rejected(
+        conn,
+        lambda: conn.execute(update(Category).where(Category.id == leaf).values(parent_id=child)),
+        match="terceiro nível",
+    )
+
     await _assert_rejected(
         conn,
         lambda: conn.execute(

@@ -48,8 +48,8 @@ delete físico e garante `UNIQUE (household_id, parent_id, name)`.
   já tem filhas não pode ganhar pai. Uma raiz com filhas não muda de household nem
   de direction.
 - Trigger `category_prevent_delete` (BEFORE DELETE): rejeita o `DELETE` direto.
-  Deixa passar o delete que vem do `ON DELETE CASCADE` de `household`
-  (`pg_trigger_depth() > 1`).
+  Deixa passar só o delete que vem do `ON DELETE CASCADE` de `household`,
+  reconhecido por a household dona já não existir.
 
 ## 4. Pressupostos
 
@@ -67,6 +67,8 @@ delete físico e garante `UNIQUE (household_id, parent_id, name)`.
 - **Delete bloqueado por trigger, com exceção do cascade de household.** Sem a
   exceção, apagar uma household com categorias falharia. `REVOKE DELETE` dependeria
   dos papéis do Supabase, fora do escopo.
+- **`TRUNCATE` e `session_replication_role = replica` não são barrados.** Trigger de
+  linha não dispara neles. São operações administrativas, fora do caminho da API.
 - **`parent_id` com ON DELETE RESTRICT.** Como não há delete físico, o RESTRICT só
   documenta a intenção.
 - **`direction` como `String` + CHECK, não ENUM.** Mesma decisão de `account.kind`
@@ -79,7 +81,8 @@ delete físico e garante `UNIQUE (household_id, parent_id, name)`.
 Em `tests/test_category.py`, contra o Postgres do testcontainers, cada caso numa
 transação revertida:
 
-- `test_third_level_is_rejected`: critério 1. Raiz e filha inserem; neta dá erro;
+- `test_third_level_is_rejected`: critério 1. Raiz e filha inserem; neta dá erro, por INSERT e por
+  UPDATE de `parent_id`;
   dar pai a uma categoria que tem filhas dá erro; ser pai de si mesma dá erro.
 - `test_child_must_match_parent_household_and_direction`: pressuposto acima.
 - `test_physical_delete_is_rejected_but_archive_works`: critério 2. `DELETE` dá

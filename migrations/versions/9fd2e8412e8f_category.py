@@ -63,14 +63,14 @@ END;
 $$
 """
 
-# Nenhum delete físico (issue #5): só `archived`. O delete que chega pelo
-# ON DELETE CASCADE de household roda dentro do trigger de FK (profundidade > 1) e passa,
-# senão apagar uma household com categorias falharia.
+# Nenhum delete físico (issue #5): só `archived`. Passa apenas o delete que chega pelo
+# ON DELETE CASCADE de household, quando a household dona já não existe; senão apagar
+# uma household com categorias falharia. TRUNCATE não dispara trigger de linha.
 PREVENT_DELETE_FUNCTION = """
 CREATE FUNCTION category_prevent_delete() RETURNS trigger
 LANGUAGE plpgsql AS $$
 BEGIN
-    IF pg_trigger_depth() > 1 THEN
+    IF NOT EXISTS (SELECT 1 FROM household WHERE id = OLD.household_id) THEN
         RETURN OLD;
     END IF;
     RAISE EXCEPTION 'category: delete físico não é permitido, use archived = true'
