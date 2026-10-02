@@ -563,6 +563,37 @@
         ]
       }
     },
+    "/external-holders/balance": {
+      "get": {
+        "tags": [
+          "external-holders"
+        ],
+        "summary": "List External Holder Balances",
+        "description": "Quanto a household deve a cada titular externo. Derivado, nunca armazenado:\nmarcar a entry como `pago` é o registro do reembolso, sem transferência à parte.\nTitular sem nada em aberto vem com saldo zero.",
+        "operationId": "list_external_holder_balances_external_holders_balance_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExternalHolderBalanceOut"
+                  },
+                  "type": "array",
+                  "title": "Response List External Holder Balances External Holders Balance Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/external-holders/{holder_id}": {
       "get": {
         "tags": [
@@ -2058,6 +2089,32 @@
           "edited_manually"
         ],
         "title": "EntryOut"
+      },
+      "ExternalHolderBalanceOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "balance": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance",
+            "description": "Soma das entries não pagas das contas do titular; zero se não há nada aberto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "balance"
+        ],
+        "title": "ExternalHolderBalanceOut"
       },
       "ExternalHolderIn": {
         "properties": {
