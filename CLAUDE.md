@@ -25,6 +25,15 @@ uv run pytest -q
 ```
 
 Os quatro precisam passar antes de qualquer commit. `--no-verify` nunca é aceitável.
+O CI (`.github/workflows/ci.yml`) roda os mesmos quatro em todo PR e push em `main`.
+
+## Testes contra Postgres
+
+Testes que precisam de banco usam as fixtures de `tests/conftest.py` (`db_session`,
+`db_engine`, `migrated_postgres_url`, `alembic_config`), que sobem um Postgres 17
+descartável via testcontainers, um por sessão de `pytest`. Requer Docker. Sem Docker
+esses testes são pulados localmente; com `CI` definida, falham. `TEST_POSTGRES_IMAGE`
+troca a imagem (por exemplo, um mirror do Docker Hub).
 
 ## Rodar localmente
 
