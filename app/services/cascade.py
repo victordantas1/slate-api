@@ -21,6 +21,11 @@ from app.services.materialization import _get_offset
 Scope = Literal["this", "forward", "all"]
 SCOPES: tuple[Scope, ...] = get_args(Scope)
 
+# Teto de Numeric(12, 2) e de SmallInteger: validados antes do banco, para nenhum
+# savepoint falhar no meio e deixar objetos da sessão com valores que não persistiram.
+MAX_AMOUNT = Decimal("9999999999.99")
+MAX_INSTALLMENTS = 32767
+
 # Linhas por INSERT: mantém os parâmetros bem abaixo do limite de 32767 do asyncpg.
 _INSERT_CHUNK = 1000
 
@@ -56,16 +61,11 @@ async def _lock_commitment(
     return commitment
 
 
-async def _sync_total_amount(session: AsyncSession, commitment: Commitment) -> None:
-    """Parcelamento e avulso: `total_amount` é a soma das entries (invariante 1)."""
-    if commitment.kind == "recurring":
-        return
-    total = await session.scalar(
-        select(func.sum(Entry.amount)).where(Entry.commitment_id == commitment.id)
-    )
-    if total is None or total <= 0:
-        raise ValueError("a soma das parcelas precisa ser > 0")
-    commitment.total_amount = total
+def _check_money(value: Decimal, name: str, *, positive: bool) -> None:
+    if not value.is_finite() or value != value.quantize(CENT) or value > MAX_AMOUNT:
+        raise ValueError(f"{name} precisa ser finito, com 2 casas e caber em Numeric(12,2)")
+    if value < 0 or (positive and value == 0):
+        raise ValueError(f"{name} precisa ser {'> 0' if positive else '>= 0'}")
 
 
 async def edit_entries(
@@ -94,8 +94,8 @@ async def edit_entries(
         raise ValueError(f"scope inválido: {scope!r}")
     if amount is None and category_id is None:
         raise ValueError("nada a editar: informe amount e/ou category_id")
-    if amount is not None and (amount < 0 or amount != amount.quantize(CENT)):
-        raise ValueError("amount precisa ser >= 0 com no máximo 2 casas decimais")
+    if amount is not None:
+        _check_money(amount, "amount", positive=False)
 
     commitment_id = await session.scalar(
         select(Entry.commitment_id).where(Entry.id == entry_id, Entry.household_id == household_id)
@@ -122,45 +122,53 @@ async def edit_entries(
         )
         if found is None:
             raise CategoryNotFoundError(category_id)
-    if amount is not None and scope != "this" and commitment.kind == "recurring" and amount <= 0:
-        raise ValueError("recurring_amount precisa ser > 0")
+
+    targets = select(Entry.id, Entry.amount).where(Entry.commitment_id == commitment.id)
+    if scope == "this":
+        targets = targets.where(Entry.id == anchor.id)
+    else:
+        targets = targets.where(Entry.edited_manually.is_(False), Entry.status != "pago")
+        if scope == "forward":
+            targets = targets.where(Entry.competencia >= anchor.competencia)
+    rows = (await session.execute(targets.with_for_update())).all()
+
+    # Tudo validado antes de escrever: o savepoint só roda o que vai dar certo.
+    new_total: Decimal | None = None
+    if amount is not None and commitment.kind == "recurring" and scope != "this":
+        _check_money(amount, "recurring_amount", positive=True)
+    elif amount is not None and commitment.kind != "recurring":
+        current = await session.scalar(
+            select(func.sum(Entry.amount)).where(Entry.commitment_id == commitment.id)
+        )
+        new_total = (
+            (current or Decimal("0"))
+            - sum((r.amount for r in rows), Decimal("0"))
+            + amount * len(rows)
+        )
+        _check_money(new_total, "a soma das parcelas", positive=True)
 
     values: dict[str, Any] = {}
     if amount is not None:
         values["amount"] = amount
     if category_id is not None:
         values["category_id"] = category_id
+    if scope == "this":
+        values["edited_manually"] = True
 
     async with session.begin_nested():
-        if scope == "this":
-            stmt = (
-                update(Entry)
-                .where(Entry.id == anchor.id)
-                .values(**values, edited_manually=True)
-                .returning(Entry.id)
+        if rows:
+            await session.execute(
+                update(Entry).where(Entry.id.in_([r.id for r in rows])).values(**values)
             )
-        else:
-            stmt = (
-                update(Entry)
-                .where(
-                    Entry.commitment_id == commitment.id,
-                    Entry.edited_manually.is_(False),
-                    Entry.status != "pago",
-                )
-                .values(**values)
-                .returning(Entry.id)
-            )
-            if scope == "forward":
-                stmt = stmt.where(Entry.competencia >= anchor.competencia)
+        if scope != "this":
             if category_id is not None:
                 commitment.category_id = category_id
             if amount is not None and commitment.kind == "recurring":
                 commitment.recurring_amount = amount
-        changed = len((await session.execute(stmt)).all())
-        if amount is not None:
-            await _sync_total_amount(session, commitment)
+        if new_total is not None:
+            commitment.total_amount = new_total
         await session.flush()
-    return changed
+    return len(rows)
 
 
 def _shift_month(month: date, months: int) -> date:
@@ -193,6 +201,9 @@ async def reschedule_installments(
         raise ValueError("parcelamento sem installment_count ou total_amount")
     if commitment.kind == "single" and count != 1:
         raise ValueError("single é parcelamento de 1x")
+    if not 1 <= count <= MAX_INSTALLMENTS:
+        raise ValueError(f"installment_count precisa estar em 1..{MAX_INSTALLMENTS}")
+    _check_money(total, "total_amount", positive=True)
 
     entries = list(
         await session.scalars(

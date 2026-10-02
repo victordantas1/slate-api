@@ -395,6 +395,8 @@ async def test_other_household_is_not_found(db_session: AsyncSession, ctx: _Ctx)
         {"scope": "all"},
         {"scope": "all", "amount": Decimal("-1.00")},
         {"scope": "all", "amount": Decimal("1.001")},
+        {"scope": "all", "amount": Decimal("NaN")},
+        {"scope": "all", "amount": Decimal("10000000000.00")},
     ],
 )
 async def test_invalid_edit_is_refused(
@@ -407,6 +409,38 @@ async def test_invalid_edit_is_refused(
         await edit_entries(
             db_session, household_id=ctx.household_id, entry_id=entries[0].id, **kwargs
         )
+
+
+async def test_refused_edit_leaves_database_and_session_untouched(
+    db_session: AsyncSession, ctx: _Ctx
+) -> None:
+    single = await create_installment_commitment(
+        db_session,
+        household_id=ctx.household_id,
+        account_id=ctx.account_id,
+        category_id=ctx.category_id,
+        kind="single",
+        description="Cadeira",
+        purchase_date=date(2026, 3, 10),
+        total_amount=Decimal("80.00"),
+        installment_count=1,
+    )
+    (entry,) = await _entries(db_session, single.id)
+    before = await _snapshot(db_session, single.id)
+
+    with pytest.raises(ValueError):
+        await edit_entries(
+            db_session,
+            household_id=ctx.household_id,
+            entry_id=entry.id,
+            scope="this",
+            amount=Decimal("0.00"),
+        )
+
+    assert entry.amount == Decimal("80.00")
+    assert entry.edited_manually is False
+    assert await _snapshot(db_session, single.id) == before
+    assert (await _commitment(db_session, single.id)).total_amount == Decimal("80.00")
 
 
 # --- caso real ----------------------------------------------------------------------
@@ -513,12 +547,50 @@ async def test_reschedule_changes_total(db_session: AsyncSession, ctx: _Ctx) -> 
     await _assert_plan_consistent(db_session, commitment.id)
 
 
+async def test_reschedule_keeps_manual_entries_and_resplits_the_rest(
+    db_session: AsyncSession, ctx: _Ctx
+) -> None:
+    commitment = await _installment(db_session, ctx)
+    entries = await _entries(db_session, commitment.id)
+    await _pay(db_session, entries[0].id)
+    await edit_entries(
+        db_session,
+        household_id=ctx.household_id,
+        entry_id=entries[4].id,
+        scope="this",
+        amount=Decimal("134.00"),
+    )
+    paid = await _paid(db_session, commitment.id)
+    manual = await _manual(db_session, commitment.id)
+
+    await reschedule_installments(
+        db_session,
+        household_id=ctx.household_id,
+        commitment_id=commitment.id,
+        installment_count=8,
+        total_amount=Decimal("3000.00"),
+    )
+
+    assert await _paid(db_session, commitment.id) == paid
+    assert await _manual(db_session, commitment.id) == manual
+    after = await _entries(db_session, commitment.id)
+    # 3000 - 393 - 134 = 2473 em 6 livres: 412,20 + 5 x 412,16.
+    free = [e.amount for e in after if e.seq not in (1, 5)]
+    assert free == [Decimal("412.20")] + [Decimal("412.16")] * 5
+    await _assert_plan_consistent(db_session, commitment.id)
+
+
 @pytest.mark.parametrize(
-    "kwargs",
-    [{"installment_count": 2}, {"total_amount": Decimal("700.00")}],
+    ("kwargs", "error"),
+    [
+        ({"installment_count": 2}, InvalidRescheduleError),
+        ({"total_amount": Decimal("700.00")}, InvalidRescheduleError),
+        ({"installment_count": 40000}, ValueError),
+        ({"total_amount": Decimal("10000000000.00")}, ValueError),
+    ],
 )
 async def test_reschedule_refuses_plans_that_break_locked_entries(
-    db_session: AsyncSession, ctx: _Ctx, kwargs: dict[str, Any]
+    db_session: AsyncSession, ctx: _Ctx, kwargs: dict[str, Any], error: type[ValueError]
 ) -> None:
     commitment = await _installment(db_session, ctx, count=4, total="1000.00")
     entries = await _entries(db_session, commitment.id)
@@ -533,7 +605,7 @@ async def test_reschedule_refuses_plans_that_break_locked_entries(
     )
     before = await _snapshot(db_session, commitment.id)
 
-    with pytest.raises(InvalidRescheduleError):
+    with pytest.raises(error):
         await reschedule_installments(
             db_session, household_id=ctx.household_id, commitment_id=commitment.id, **kwargs
         )
@@ -632,7 +704,7 @@ async def test_random_operations_never_touch_paid_entries(
                 if op == "this":
                     manual = await _manual(db_session, commitment.id)
             applied[op] += 1
-        except (PaidEntryError, InvalidRescheduleError):
+        except ValueError:  # PaidEntryError, InvalidRescheduleError, soma zerada
             pass
 
         assert await _paid(db_session, commitment.id) == paid
