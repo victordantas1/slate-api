@@ -10,10 +10,11 @@ from app.db.session import get_engine
 router = APIRouter()
 
 DatabaseStatus = Literal["ok", "unavailable", "not_configured"]
+HealthStatus = Literal["ok", "degraded"]
 
 
 class HealthResponse(BaseModel):
-    status: str
+    status: HealthStatus
     environment: str
     database: DatabaseStatus
 

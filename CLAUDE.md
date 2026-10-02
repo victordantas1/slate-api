@@ -43,6 +43,19 @@ uv run uvicorn app.main:app --reload
 
 `/health` é o endpoint de liveness.
 
+## Contrato OpenAPI
+
+`openapi.json` (raiz do repo) é o contrato que o slate-web usa para gerar tipos. É
+gerado das rotas do app e versionado junto com o código:
+
+```
+uv run python -m app.openapi
+```
+
+Toda mudança em rota ou schema regrava o arquivo no mesmo commit; o teste
+`tests/test_openapi.py` e o CI falham se ele estiver desatualizado. Em conflito de
+merge no arquivo, não resolva à mão: regere. Detalhes em `docs/openapi.md`.
+
 ## Migrations
 
 ```
