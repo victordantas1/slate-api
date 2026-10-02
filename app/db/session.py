@@ -15,6 +15,10 @@ from sqlalchemy.ext.asyncio import (
 from app.core.auth import CurrentMember, get_current_member
 from app.core.config import Settings, get_settings
 
+# Role das policies de RLS (migration `rls_household`). A API conecta como dono das
+# tabelas, que ignora RLS; a sessão do membro troca para esta role, que não ignora.
+APP_ROLE = "slate_app"
+
 
 def _engine_kwargs(settings: Settings) -> dict[str, object]:
     return {
@@ -47,6 +51,8 @@ async def get_session() -> AsyncIterator[AsyncSession]:
 
 
 async def apply_rls_claims(session: AsyncSession, member: CurrentMember) -> None:
+    # `SET LOCAL` e `is_local` valem só para a transação, como as claims.
+    await session.execute(text(f"SET LOCAL ROLE {APP_ROLE}"))
     # Mesmo GUC que o PostgREST usa e que `auth.jwt()` lê no Supabase. `is_local`
     # limita o valor à transação: com o pooler em transaction mode, um valor de
     # sessão vazaria para a próxima requisição que pegasse a mesma conexão.
