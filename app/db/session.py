@@ -1,6 +1,10 @@
+import json
 from collections.abc import AsyncIterator
 from functools import lru_cache
+from typing import Annotated
 
+from fastapi import Depends
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -8,6 +12,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from app.core.auth import CurrentMember, get_current_member
 from app.core.config import Settings, get_settings
 
 
@@ -38,4 +43,22 @@ def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
 
 async def get_session() -> AsyncIterator[AsyncSession]:
     async with get_sessionmaker()() as session:
+        yield session
+
+
+async def apply_rls_claims(session: AsyncSession, member: CurrentMember) -> None:
+    # Mesmo GUC que o PostgREST usa e que `auth.jwt()` lê no Supabase. `is_local`
+    # limita o valor à transação: com o pooler em transaction mode, um valor de
+    # sessão vazaria para a próxima requisição que pegasse a mesma conexão.
+    await session.execute(
+        text("SELECT set_config('request.jwt.claims', :claims, true)"),
+        {"claims": json.dumps(member.claims)},
+    )
+
+
+async def get_member_session(
+    member: Annotated[CurrentMember, Depends(get_current_member)],
+) -> AsyncIterator[AsyncSession]:
+    async with get_sessionmaker()() as session, session.begin():
+        await apply_rls_claims(session, member)
         yield session
