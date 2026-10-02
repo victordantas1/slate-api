@@ -14,6 +14,11 @@ class Settings(BaseSettings):
     db_max_overflow: int = 5
     db_pool_recycle_seconds: int = 1800
     db_statement_cache_size: int = 0
+    cors_allowed_origins: str = ""
+
+    @property
+    def cors_origins(self) -> list[str]:
+        return [o.strip() for o in self.cors_allowed_origins.split(",") if o.strip()]
 
 
 @lru_cache
