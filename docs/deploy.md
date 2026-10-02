@@ -26,6 +26,11 @@ O keepalive (`.github/workflows/keepalive.yml`) cobre os dois: chama `/health` a
 | `DATABASE_URL` vazia (dev, testes) | 200 | `{"status": "ok", "database": "not_configured", ...}` |
 | Banco configurado e inacessível | 503 | `{"status": "degraded", "database": "unavailable", ...}` |
 
+## Job do horizonte
+
+A extensão do horizonte de recorrentes roda no `pg_cron` do Supabase, não no Render.
+A migration habilita e agenda; o que conferir no painel está em `docs/horizon-job.md`.
+
 ## Variáveis de ambiente
 
 Todas são campos de `Settings` (`app/core/config.py`) e estão declaradas em

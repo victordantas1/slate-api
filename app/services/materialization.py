@@ -115,6 +115,10 @@ async def extend_recurring_horizon(
     ficam de fora. Sem `commitment_ids`, estende todos os que a sessão enxerga (sob RLS,
     os da household). Devolve quantas entries foram inseridas; o commit fica com quem
     chamou.
+
+    O job mensal (pg_cron) roda o espelho SQL desta função,
+    `slate_jobs.extend_recurring_horizon`; mudou a regra aqui, mude lá também
+    (`tests/test_horizon_job.py` compara as duas).
     """
     until = horizon_end(today)
     query = (
