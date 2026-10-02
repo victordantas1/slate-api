@@ -65,6 +65,13 @@ uv run alembic revision --autogenerate -m "<mensagem>"
 
 A URL de conexão vem de `DATABASE_URL` no `.env`, nunca de `alembic.ini`.
 
+Toda tabela nova em `public` entra com RLS na mesma migration: `GRANT` para a role
+`slate_app`, `ENABLE ROW LEVEL SECURITY` e uma policy por comando (SELECT, INSERT,
+UPDATE, DELETE) comparando `household_id` com `(SELECT current_household_id())`. O modelo
+é `migrations/versions/b3c1f0a7d2e4_rls_household.py`. A sessão autenticada da API
+(`get_member_session`) roda como `slate_app`; `tests/test_rls.py` falha se uma tabela
+ficar sem RLS ou sem as quatro policies.
+
 ## Estrutura
 
 | Pacote | Papel |
