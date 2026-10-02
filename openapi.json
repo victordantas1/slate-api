@@ -837,6 +837,224 @@
           }
         }
       }
+    },
+    "/reports/debt-curve": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Debt Curve",
+        "description": "Quanto falta pagar de parcelamentos em cada mês futuro. Conta só entries de\ncommitment `installment` que não estão `pago`; mês sem parcela vem com zero.",
+        "operationId": "debt_curve_reports_debt_curve_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "months",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 120,
+              "minimum": 1,
+              "default": 24,
+              "title": "Months"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Primeira competência, yyyy-mm. Padrão: mês atual",
+              "title": "Start"
+            },
+            "description": "Primeira competência, yyyy-mm. Padrão: mês atual"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DebtPointOut"
+                  },
+                  "title": "Response Debt Curve Reports Debt Curve Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reports/committed-income": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Committed Income",
+        "description": "Fração das entradas de cada mês comprometida com parcelas.",
+        "operationId": "committed_income_reports_committed_income_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "months",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 120,
+              "minimum": 1,
+              "default": 12,
+              "title": "Months"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Primeira competência, yyyy-mm. Padrão: mês atual",
+              "title": "Start"
+            },
+            "description": "Primeira competência, yyyy-mm. Padrão: mês atual"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IncomePointOut"
+                  },
+                  "title": "Response Committed Income Reports Committed Income Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reports/category-delta": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Category Delta",
+        "description": "Total de cada categoria no mês contra a média dos `baseline` meses anteriores.",
+        "operationId": "category_delta_reports_category_delta_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Competência, yyyy-mm. Padrão: mês atual",
+              "title": "Month"
+            },
+            "description": "Competência, yyyy-mm. Padrão: mês atual"
+          },
+          {
+            "name": "baseline",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 24,
+              "minimum": 1,
+              "default": 3,
+              "title": "Baseline"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryDeltaReportOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1327,6 +1545,109 @@
         ],
         "title": "CategoryCreate"
       },
+      "CategoryDeltaOut": {
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Category Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "expense",
+              "income"
+            ],
+            "title": "Direction"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "current": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Current",
+            "description": "Total da categoria no mês"
+          },
+          "baseline_average": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Baseline Average",
+            "description": "Média dos meses anteriores; mês sem lançamento conta como zero"
+          },
+          "delta": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Delta",
+            "description": "current - baseline_average"
+          },
+          "delta_pct": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Pct",
+            "description": "delta / baseline_average, com 4 casas; nulo quando a média é zero"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category_id",
+          "name",
+          "direction",
+          "parent_id",
+          "current",
+          "baseline_average",
+          "delta",
+          "delta_pct"
+        ],
+        "title": "CategoryDeltaOut"
+      },
+      "CategoryDeltaReportOut": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "format": "date",
+            "title": "Month"
+          },
+          "baseline": {
+            "type": "integer",
+            "title": "Baseline"
+          },
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryDeltaOut"
+            },
+            "type": "array",
+            "title": "Categories"
+          }
+        },
+        "type": "object",
+        "required": [
+          "month",
+          "baseline",
+          "categories"
+        ],
+        "title": "CategoryDeltaReportOut"
+      },
       "CategoryOut": {
         "properties": {
           "id": {
@@ -1643,6 +1964,27 @@
         ],
         "title": "CommitmentWithEntries"
       },
+      "DebtPointOut": {
+        "properties": {
+          "competencia": {
+            "type": "string",
+            "format": "date",
+            "title": "Competencia"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "description": "Soma das parcelas não pagas da competência"
+          }
+        },
+        "type": "object",
+        "required": [
+          "competencia",
+          "amount"
+        ],
+        "title": "DebtPointOut"
+      },
       "EntryOut": {
         "properties": {
           "id": {
@@ -1801,6 +2143,48 @@
           "database"
         ],
         "title": "HealthResponse"
+      },
+      "IncomePointOut": {
+        "properties": {
+          "competencia": {
+            "type": "string",
+            "format": "date",
+            "title": "Competencia"
+          },
+          "installments": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Installments",
+            "description": "Saídas de commitments `installment`"
+          },
+          "income": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Income",
+            "description": "Entries de categoria `income`"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio",
+            "description": "installments / income, com 4 casas; nulo quando não há entrada no mês"
+          }
+        },
+        "type": "object",
+        "required": [
+          "competencia",
+          "installments",
+          "income",
+          "ratio"
+        ],
+        "title": "IncomePointOut"
       },
       "SeedOut": {
         "properties": {

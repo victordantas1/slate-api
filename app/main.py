@@ -6,6 +6,7 @@ from app.api.categories import router as categories_router
 from app.api.commitments import router as commitments_router
 from app.api.external_holders import router as external_holders_router
 from app.api.health import router as health_router
+from app.api.reports import router as reports_router
 from app.core.config import get_settings
 
 
@@ -23,6 +24,7 @@ def create_app() -> FastAPI:
     application.include_router(categories_router)
     application.include_router(external_holders_router)
     application.include_router(commitments_router)
+    application.include_router(reports_router)
     return application
 
 
