@@ -13,18 +13,18 @@ from app.services.materialization import (
     create_recurring_commitment,
     extend_recurring_horizon,
 )
-from tests.test_materialization import _create, _Ctx, _ctx, _entries
+from tests.factories import HouseholdCtx, entries_of, make_commitment, make_household
 
 TODAY = date(2026, 10, 2)
 AMOUNT = Decimal("39.90")
 
 
 @pytest.fixture
-async def ctx(db_session: AsyncSession) -> _Ctx:
-    return await _ctx(db_session)
+async def ctx(db_session: AsyncSession) -> HouseholdCtx:
+    return await make_household(db_session)
 
 
-async def _recurring(session: AsyncSession, ctx: _Ctx, **overrides: Any) -> Commitment:
+async def _recurring(session: AsyncSession, ctx: HouseholdCtx, **overrides: Any) -> Commitment:
     values: dict[str, Any] = {
         "household_id": ctx.household_id,
         "account_id": ctx.account_id,
@@ -39,7 +39,7 @@ async def _recurring(session: AsyncSession, ctx: _Ctx, **overrides: Any) -> Comm
     return await create_recurring_commitment(session, **values)
 
 
-async def _bare_recurring(session: AsyncSession, ctx: _Ctx, **overrides: Any) -> uuid.UUID:
+async def _bare_recurring(session: AsyncSession, ctx: HouseholdCtx, **overrides: Any) -> uuid.UUID:
     """Commitment recorrente sem entries, gravado direto na tabela."""
     values: dict[str, Any] = {
         "household_id": ctx.household_id,
@@ -84,7 +84,9 @@ async def _fresh_entries(session: AsyncSession, commitment_id: uuid.UUID) -> lis
     return list(result)
 
 
-async def test_create_materializes_until_horizon(db_session: AsyncSession, ctx: _Ctx) -> None:
+async def test_create_materializes_until_horizon(
+    db_session: AsyncSession, ctx: HouseholdCtx
+) -> None:
     commitment = await _recurring(db_session, ctx)
 
     assert commitment.kind == "recurring"
@@ -105,7 +107,7 @@ async def test_create_materializes_until_horizon(db_session: AsyncSession, ctx: 
 
 
 async def test_invariant_3_running_n_times_equals_running_once(
-    db_session: AsyncSession, ctx: _Ctx
+    db_session: AsyncSession, ctx: HouseholdCtx
 ) -> None:
     commitment_id = await _bare_recurring(db_session, ctx)
 
@@ -118,7 +120,7 @@ async def test_invariant_3_running_n_times_equals_running_once(
     assert _snapshot(await _fresh_entries(db_session, commitment_id)) == once
 
 
-async def test_horizon_rolls_forward_one_month(db_session: AsyncSession, ctx: _Ctx) -> None:
+async def test_horizon_rolls_forward_one_month(db_session: AsyncSession, ctx: HouseholdCtx) -> None:
     commitment = await _recurring(db_session, ctx)
     before = _snapshot(await _fresh_entries(db_session, commitment.id))
 
@@ -130,7 +132,7 @@ async def test_horizon_rolls_forward_one_month(db_session: AsyncSession, ctx: _C
     assert (entries[-1].seq, entries[-1].competencia) == (25, date(2028, 11, 1))
 
 
-async def test_respects_end_date(db_session: AsyncSession, ctx: _Ctx) -> None:
+async def test_respects_end_date(db_session: AsyncSession, ctx: HouseholdCtx) -> None:
     commitment = await _recurring(db_session, ctx, end_date=date(2027, 3, 31))
 
     await extend_recurring_horizon(db_session, today=date(2027, 6, 1))
@@ -149,17 +151,17 @@ async def test_respects_end_date(db_session: AsyncSession, ctx: _Ctx) -> None:
 
 @pytest.mark.parametrize("status", ["cancelled", "settled"])
 async def test_ignores_cancelled_and_settled(
-    db_session: AsyncSession, ctx: _Ctx, status: str
+    db_session: AsyncSession, ctx: HouseholdCtx, status: str
 ) -> None:
     commitment_id = await _bare_recurring(db_session, ctx, status=status)
 
     inserted = await extend_recurring_horizon(db_session, today=TODAY)
 
     assert inserted == 0
-    assert await _entries(db_session, commitment_id) == []
+    assert await entries_of(db_session, commitment_id) == []
 
 
-async def test_inactive_keeps_existing_entries(db_session: AsyncSession, ctx: _Ctx) -> None:
+async def test_inactive_keeps_existing_entries(db_session: AsyncSession, ctx: HouseholdCtx) -> None:
     commitment = await _recurring(db_session, ctx)
     before = _snapshot(await _fresh_entries(db_session, commitment.id))
     await db_session.execute(
@@ -170,15 +172,15 @@ async def test_inactive_keeps_existing_entries(db_session: AsyncSession, ctx: _C
     assert _snapshot(await _fresh_entries(db_session, commitment.id)) == before
 
 
-async def test_ignores_installments(db_session: AsyncSession, ctx: _Ctx) -> None:
-    installment = await _create(db_session, ctx)
+async def test_ignores_installments(db_session: AsyncSession, ctx: HouseholdCtx) -> None:
+    installment = await make_commitment(db_session, ctx)
     before = _snapshot(await _fresh_entries(db_session, installment.id))
 
     assert await extend_recurring_horizon(db_session, today=TODAY) == 0
     assert _snapshot(await _fresh_entries(db_session, installment.id)) == before
 
 
-async def test_never_overwrites_existing_entry(db_session: AsyncSession, ctx: _Ctx) -> None:
+async def test_never_overwrites_existing_entry(db_session: AsyncSession, ctx: HouseholdCtx) -> None:
     commitment = await _recurring(db_session, ctx)
     edited = (await _fresh_entries(db_session, commitment.id))[2]
     await db_session.execute(
@@ -208,28 +210,30 @@ async def test_never_overwrites_existing_entry(db_session: AsyncSession, ctx: _C
     assert entries[-1].amount == Decimal("49.90")
 
 
-async def test_extend_can_be_scoped_to_commitments(db_session: AsyncSession, ctx: _Ctx) -> None:
+async def test_extend_can_be_scoped_to_commitments(
+    db_session: AsyncSession, ctx: HouseholdCtx
+) -> None:
     target = await _bare_recurring(db_session, ctx)
     other = await _bare_recurring(db_session, ctx, description="Internet")
 
     inserted = await extend_recurring_horizon(db_session, today=TODAY, commitment_ids=[target])
 
     assert inserted == 24
-    assert len(await _entries(db_session, target)) == 24
-    assert await _entries(db_session, other) == []
+    assert len(await entries_of(db_session, target)) == 24
+    assert await entries_of(db_session, other) == []
 
 
 async def test_create_rejects_account_of_other_household(
-    db_session: AsyncSession, ctx: _Ctx
+    db_session: AsyncSession, ctx: HouseholdCtx
 ) -> None:
-    other = await _ctx(db_session, name="Outra casa")
+    other = await make_household(db_session, name="Outra casa")
 
     with pytest.raises(AccountNotFoundError):
         await _recurring(db_session, ctx, account_id=other.account_id)
 
 
 async def test_create_respects_offset_zero(db_session: AsyncSession) -> None:
-    ctx = await _ctx(db_session, offset=0)
+    ctx = await make_household(db_session, offset=0)
 
     commitment = await _recurring(db_session, ctx)
 
@@ -240,10 +244,10 @@ async def test_create_respects_offset_zero(db_session: AsyncSession) -> None:
 
 
 async def test_create_with_future_start_past_horizon_has_no_entries(
-    db_session: AsyncSession, ctx: _Ctx
+    db_session: AsyncSession, ctx: HouseholdCtx
 ) -> None:
     commitment = await _recurring(db_session, ctx, purchase_date=date(2029, 1, 10))
 
-    assert await _entries(db_session, commitment.id) == []
+    assert await entries_of(db_session, commitment.id) == []
     stored = await db_session.scalar(select(Commitment).where(Commitment.id == commitment.id))
     assert stored is not None
