@@ -5,7 +5,13 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from app.domain.installments import competencia, split_installments
+from app.domain.installments import (
+    PlannedInstallment,
+    competencia,
+    plan_installments,
+    seq_from_competencia,
+    split_installments,
+)
 
 CENT = Decimal("0.01")
 
@@ -112,3 +118,62 @@ def test_competencia_property(purchase: date, offset: int, seq: int) -> None:
     assert result.day == 1
     months = (result.year - purchase.year) * 12 + (result.month - purchase.month)
     assert months == offset + seq - 1
+
+
+purchase_dates = st.dates(min_value=date(2000, 1, 1), max_value=date(2099, 12, 31))
+offsets = st.integers(min_value=0, max_value=3)
+
+
+@given(purchase_dates, offsets, st.integers(min_value=1, max_value=480))
+def test_seq_from_competencia_inverts_competencia(
+    purchase_date: date, offset: int, seq: int
+) -> None:
+    month = competencia(purchase_date, offset, seq)
+    assert seq_from_competencia(purchase_date, offset, month) == seq
+
+
+def test_seq_from_competencia_across_year_boundary() -> None:
+    # Compra em dezembro, primeira parcela no mês seguinte.
+    assert seq_from_competencia(date(2026, 12, 20), 1, date(2027, 1, 1)) == 1
+    assert seq_from_competencia(date(2026, 12, 20), 1, date(2027, 12, 1)) == 12
+
+
+@pytest.mark.parametrize(
+    "month",
+    [date(2026, 9, 15), date(2026, 8, 1)],  # fora do dia 1 / antes da primeira parcela
+)
+def test_seq_from_competencia_rejects_invalid_month(month: date) -> None:
+    with pytest.raises(ValueError):
+        seq_from_competencia(date(2026, 8, 15), 1, month)
+
+
+def test_plan_installments_example() -> None:
+    assert plan_installments(date(2026, 11, 15), 1, Decimal("1000"), 3) == [
+        PlannedInstallment(1, date(2026, 12, 1), Decimal("333.34")),
+        PlannedInstallment(2, date(2027, 1, 1), Decimal("333.33")),
+        PlannedInstallment(3, date(2027, 2, 1), Decimal("333.33")),
+    ]
+
+
+def test_plan_single_is_one_installment() -> None:
+    assert plan_installments(date(2026, 8, 15), 0, Decimal("59.90"), 1) == [
+        PlannedInstallment(1, date(2026, 8, 1), Decimal("59.90"))
+    ]
+
+
+@given(purchase_dates, offsets, totals, counts)
+def test_plan_installments_properties(
+    purchase_date: date, offset: int, total: Decimal, count: int
+) -> None:
+    plan = plan_installments(purchase_date, offset, total, count)
+
+    assert len(plan) == count
+    assert sum((p.amount for p in plan), Decimal(0)) == total
+    assert [p.seq for p in plan] == list(range(1, count + 1))
+    assert plan[0].competencia == competencia(purchase_date, offset, 1)
+    for p in plan:
+        assert p.competencia.day == 1
+        assert seq_from_competencia(purchase_date, offset, p.competencia) == p.seq
+    for prev, cur in zip(plan, plan[1:], strict=False):
+        months = (cur.competencia.year - prev.competencia.year) * 12
+        assert months + cur.competencia.month - prev.competencia.month == 1

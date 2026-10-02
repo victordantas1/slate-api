@@ -25,6 +25,12 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy app tests
+      # Contrato consumido pelo slate-web: falha se openapi.json não bater com as rotas.
+      - run: uv run python -m app.openapi --check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openapi
+          path: openapi.json
 
   test:
     runs-on: ubuntu-latest
