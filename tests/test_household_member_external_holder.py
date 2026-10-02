@@ -10,26 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from app.core.config import get_settings
 from app.db.models import ExternalHolder, Household, Member
-from tests.test_db_migrations import REPO_ROOT
-
-DATABASE_URL = get_settings().database_url
-
-pytestmark = pytest.mark.skipif(
-    not DATABASE_URL,
-    reason=(
-        "requer DATABASE_URL configurada para um Postgres real; pulado até a suíte "
-        "de testcontainers (issue #15) padronizar isso em todo ambiente"
-    ),
-)
 
 
-@pytest.fixture
-def alembic_config() -> Config:
-    cfg = Config(str(REPO_ROOT / "alembic.ini"))
-    cfg.set_main_option("script_location", str(REPO_ROOT / "migrations"))
-    assert DATABASE_URL is not None
-    cfg.set_main_option("sqlalchemy.url", DATABASE_URL)
-    return cfg
+def _database_url() -> str:
+    # A fixture `alembic_config` (tests/conftest.py) aponta DATABASE_URL para o container.
+    url = get_settings().database_url
+    assert url is not None
+    return url
 
 
 async def _insert_household(conn: AsyncConnection, name: str) -> uuid.UUID:
@@ -38,8 +25,7 @@ async def _insert_household(conn: AsyncConnection, name: str) -> uuid.UUID:
 
 
 async def _assert_member_supabase_user_id_is_unique() -> None:
-    assert DATABASE_URL is not None
-    engine = create_async_engine(DATABASE_URL)
+    engine = create_async_engine(_database_url())
     try:
         async with engine.connect() as conn:
             trans = await conn.begin()
@@ -74,8 +60,7 @@ def test_member_supabase_user_id_is_unique(alembic_config: Config) -> None:
 
 
 async def _assert_external_holder_name_is_unique_per_household() -> None:
-    assert DATABASE_URL is not None
-    engine = create_async_engine(DATABASE_URL)
+    engine = create_async_engine(_database_url())
     try:
         async with engine.connect() as conn:
             trans = await conn.begin()
