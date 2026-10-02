@@ -1,0 +1,38 @@
+# Blueprint do Render para a slate-api. Passos manuais e variáveis: docs/deploy.md.
+services:
+  - type: web
+    name: slate-api
+    runtime: python
+    plan: free
+    branch: main
+    autoDeploy: true
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    # preDeployCommand não existe no plano free: as migrations rodam antes do uvicorn,
+    # e uma falha nelas impede o deploy de ficar saudável.
+    startCommand: >-
+      uv run --frozen --no-dev alembic upgrade head &&
+      uv run --frozen --no-dev uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: APP_NAME
+        value: slate-api
+      - key: ENVIRONMENT
+        value: production
+      # Segredos e valores por ambiente: sync false faz o Render pedir no primeiro
+      # deploy do Blueprint, sem versionar o valor.
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+      - key: DB_POOL_SIZE
+        value: "5"
+      - key: DB_MAX_OVERFLOW
+        value: "5"
+      - key: DB_POOL_RECYCLE_SECONDS
+        value: "1800"
+      - key: DB_STATEMENT_CACHE_SIZE
+        value: "0"
