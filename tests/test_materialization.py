@@ -143,3 +143,11 @@ async def test_rejects_what_is_not_installment_or_single(
         await make_commitment(db_session, household, kind=kind, installment_count=count)
 
     assert await _count(db_session, Commitment) == before
+
+
+# Nomes antigos dos helpers, que viraram `tests/factories.py`. Ficam enquanto houver
+# branch aberta importando-os daqui; código novo importa da factory.
+_Ctx = HouseholdCtx
+_ctx = make_household
+_create = make_commitment
+_entries = entries_of

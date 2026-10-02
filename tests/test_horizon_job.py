@@ -17,17 +17,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import Account, Commitment
 from app.db.session import APP_ROLE
 from app.services.materialization import extend_recurring_horizon
-from tests.test_materialization import _Ctx, _ctx
+from tests.factories import HouseholdCtx, make_household
 
 TODAY = date(2026, 10, 2)
 
 
 @pytest.fixture
-async def ctx(db_session: AsyncSession) -> _Ctx:
-    return await _ctx(db_session)
+async def ctx(db_session: AsyncSession) -> HouseholdCtx:
+    return await make_household(db_session)
 
 
-async def _commitment(session: AsyncSession, ctx: _Ctx, **overrides: Any) -> uuid.UUID:
+async def _commitment(session: AsyncSession, ctx: HouseholdCtx, **overrides: Any) -> uuid.UUID:
     values: dict[str, Any] = {
         "household_id": ctx.household_id,
         "account_id": ctx.account_id,
@@ -43,7 +43,7 @@ async def _commitment(session: AsyncSession, ctx: _Ctx, **overrides: Any) -> uui
     ).scalar_one()
 
 
-async def _account(session: AsyncSession, ctx: _Ctx, offset: int) -> uuid.UUID:
+async def _account(session: AsyncSession, ctx: HouseholdCtx, offset: int) -> uuid.UUID:
     return (
         await session.execute(
             insert(Account)
@@ -89,7 +89,7 @@ async def _run_job(session: AsyncSession, today: date | None = TODAY) -> Row[Any
     ).one()
 
 
-async def _mixed_portfolio(session: AsyncSession, ctx: _Ctx) -> None:
+async def _mixed_portfolio(session: AsyncSession, ctx: HouseholdCtx) -> None:
     """Recorrentes que exercitam cada regra, e o que o job precisa ignorar."""
     offset_0 = await _account(session, ctx, 0)
     offset_2 = await _account(session, ctx, 2)
@@ -113,7 +113,7 @@ async def _mixed_portfolio(session: AsyncSession, ctx: _Ctx) -> None:
 
 
 async def test_sql_job_writes_the_same_entries_as_the_python_service(
-    db_session: AsyncSession, ctx: _Ctx
+    db_session: AsyncSession, ctx: HouseholdCtx
 ) -> None:
     await _mixed_portfolio(db_session, ctx)
 
@@ -131,7 +131,7 @@ async def test_sql_job_writes_the_same_entries_as_the_python_service(
 
 
 async def test_sql_job_finds_nothing_left_after_python_service(
-    db_session: AsyncSession, ctx: _Ctx
+    db_session: AsyncSession, ctx: HouseholdCtx
 ) -> None:
     await _mixed_portfolio(db_session, ctx)
     await extend_recurring_horizon(db_session, today=TODAY)
@@ -141,7 +141,7 @@ async def test_sql_job_finds_nothing_left_after_python_service(
     assert (run.status, run.inserted) == ("ok", 0)
 
 
-async def test_invariant_3_job_is_idempotent(db_session: AsyncSession, ctx: _Ctx) -> None:
+async def test_invariant_3_job_is_idempotent(db_session: AsyncSession, ctx: HouseholdCtx) -> None:
     await _mixed_portfolio(db_session, ctx)
 
     first = await _run_job(db_session)
@@ -153,7 +153,9 @@ async def test_invariant_3_job_is_idempotent(db_session: AsyncSession, ctx: _Ctx
     assert await _entries(db_session) == once
 
 
-async def test_job_rolls_horizon_forward_one_month(db_session: AsyncSession, ctx: _Ctx) -> None:
+async def test_job_rolls_horizon_forward_one_month(
+    db_session: AsyncSession, ctx: HouseholdCtx
+) -> None:
     commitment_id = await _commitment(db_session, ctx)
 
     await _run_job(db_session, date(2026, 10, 2))
@@ -176,7 +178,9 @@ async def test_job_rolls_horizon_forward_one_month(db_session: AsyncSession, ctx
     assert tuple(last) == (25, date(2028, 11, 1))
 
 
-async def test_job_never_overwrites_existing_entries(db_session: AsyncSession, ctx: _Ctx) -> None:
+async def test_job_never_overwrites_existing_entries(
+    db_session: AsyncSession, ctx: HouseholdCtx
+) -> None:
     commitment_id = await _commitment(db_session, ctx)
     await _run_job(db_session)
     await db_session.execute(
@@ -204,7 +208,7 @@ async def test_job_without_date_uses_today_in_sao_paulo(db_session: AsyncSession
 
 
 async def test_failure_is_logged_and_leaves_no_partial_entries(
-    db_session: AsyncSession, ctx: _Ctx
+    db_session: AsyncSession, ctx: HouseholdCtx
 ) -> None:
     await _mixed_portfolio(db_session, ctx)
     # Trigger só desta transação: a terceira entry inserida derruba a rodada.
