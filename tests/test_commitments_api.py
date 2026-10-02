@@ -9,7 +9,7 @@ from typing import Any
 import jwt
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import func, insert, select, update
+from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from app.db.models import Account, Category, Commitment, Entry, Household, Member
@@ -45,6 +45,7 @@ class _Api:
     def __init__(self, client: TestClient, database_url: str) -> None:
         self.client = client
         self.database_url = database_url
+        self.household_ids: list[uuid.UUID] = []
 
     def _run[T](self, work: Callable[[AsyncConnection], Awaitable[T]]) -> T:
         async def _go() -> T:
@@ -95,6 +96,7 @@ class _Api:
             return household_id, member_id, account_id, category_id
 
         household_id, member_id, account_id, category_id = self._run(_create)
+        self.household_ids.append(household_id)
         token = jwt.encode(
             {
                 "sub": str(uuid.uuid4()),
@@ -142,6 +144,21 @@ class _Api:
 
         return self._run(_count)
 
+    def cleanup(self) -> None:
+        """Apaga as households criadas (e tudo delas, em cascata).
+
+        A API commita de verdade no Postgres compartilhado da sessão de testes; sem isso
+        as entries daqui vazariam para testes que leem a tabela `entry` inteira.
+        """
+        if not self.household_ids:
+            return
+        ids = list(self.household_ids)
+
+        async def _delete(conn: AsyncConnection) -> None:
+            await conn.execute(delete(Household).where(Household.id.in_(ids)))
+
+        self._run(_delete)
+
     def set_status(self, commitment_id: str, status: str) -> None:
         async def _set(conn: AsyncConnection) -> None:
             await conn.execute(
@@ -160,7 +177,11 @@ def api(migrated_postgres_url: str, monkeypatch: pytest.MonkeyPatch) -> Iterator
     get_engine.cache_clear()
     try:
         with TestClient(app) as client:
-            yield _Api(client, migrated_postgres_url)
+            test_api = _Api(client, migrated_postgres_url)
+            try:
+                yield test_api
+            finally:
+                test_api.cleanup()
     finally:
         get_engine.cache_clear()
 
