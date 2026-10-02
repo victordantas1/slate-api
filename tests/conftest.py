@@ -11,6 +11,7 @@ from testcontainers.community.postgres import PostgresContainer
 
 from app.core.config import get_settings
 from app.main import app
+from tests.factories import HouseholdCtx, make_household
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -102,3 +103,9 @@ async def db_session(db_engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
         finally:
             await session.close()
             await trans.rollback()
+
+
+@pytest.fixture
+async def household(db_session: AsyncSession) -> HouseholdCtx:
+    """Household com membro, cartão (offset 1) e categoria, via `tests/factories.py`."""
+    return await make_household(db_session)
