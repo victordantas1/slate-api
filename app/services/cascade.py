@@ -46,6 +46,10 @@ class PaidEntryError(ValueError):
     """Entry `pago` não é editável."""
 
 
+class CommitmentStateError(ValueError):
+    """Operação incompatível com o status ou o tipo do commitment."""
+
+
 async def _lock_commitment(
     session: AsyncSession, household_id: uuid.UUID, commitment_id: uuid.UUID
 ) -> Commitment:
@@ -190,9 +194,12 @@ async def reschedule_installments(
     `total - soma(travadas)` é redividido entre os outros seqs de `1..installment_count`.
     Seqs livres além da nova contagem são apagados; seqs novos nascem `previsto`.
     Recusa (`InvalidRescheduleError`) contagem abaixo de uma travada ou total que não as
-    cobre. Roda num savepoint; o commit fica com quem chamou.
+    cobre, e commitment cancelado (`CommitmentStateError`). Se sobram só parcelas pagas,
+    o commitment passa a `settled`. Roda num savepoint; o commit fica com quem chamou.
     """
     commitment = await _lock_commitment(session, household_id, commitment_id)
+    if commitment.status == "cancelled":
+        raise CommitmentStateError("commitment cancelado não é recalculado")
     if commitment.kind == "recurring":
         raise ValueError("recorrente não tem divisão de parcelas")
     count = commitment.installment_count if installment_count is None else installment_count
@@ -259,5 +266,9 @@ async def reschedule_installments(
         commitment.installment_count = count
         commitment.total_amount = total
         await session.flush()
+    # Import local: lifecycle importa daqui o lock e os erros.
+    from app.services.lifecycle import settle_if_paid
+
+    await settle_if_paid(session, household_id=household_id, commitment_id=commitment.id)
     await session.refresh(commitment)
     return commitment
