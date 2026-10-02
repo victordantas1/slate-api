@@ -10,7 +10,7 @@ from datetime import date
 from decimal import Decimal
 from typing import NamedTuple
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Account, Category, Commitment, Entry
@@ -56,6 +56,18 @@ async def ensure_references(
         raise CommitmentRuleError("categoria não encontrada")
     if category_archived:
         raise CommitmentRuleError("categoria está arquivada")
+
+
+# Mesmo relógio e fuso do job de horizonte (`slate_jobs.extend_recurring_horizon`), para
+# o POST e o job concordarem sobre o mês corrente na virada do mês.
+_TODAY = text("SELECT (now() AT TIME ZONE 'America/Sao_Paulo')::date")
+
+
+async def today(session: AsyncSession) -> date:
+    """O dia corrente em America/Sao_Paulo, pelo relógio do banco."""
+    value = await session.scalar(_TODAY)
+    assert isinstance(value, date)
+    return value
 
 
 async def list_entries(session: AsyncSession, commitment_id: uuid.UUID) -> Sequence[Entry]:

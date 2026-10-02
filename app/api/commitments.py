@@ -12,7 +12,11 @@ from app.db.session import get_member_session
 from app.services import cascade
 from app.services import commitments as service
 from app.services.lifecycle import cancel_commitment
-from app.services.materialization import AccountNotFoundError, create_installment_commitment
+from app.services.materialization import (
+    AccountNotFoundError,
+    create_installment_commitment,
+    create_recurring_commitment,
+)
 
 router = APIRouter(prefix="/commitments", tags=["commitments"])
 
@@ -41,8 +45,13 @@ class CommitmentCreate(BaseModel):
     @model_validator(mode="after")
     def _check_kind(self) -> Self:
         if self.kind == "recurring":
-            # Materialização do recorrente é a #11; o enum já é o do banco.
-            raise ValueError("recurring ainda não é suportado")
+            if self.recurring_amount is None:
+                raise ValueError("recurring precisa de recurring_amount")
+            if self.total_amount is not None or self.installment_count is not None:
+                raise ValueError("total_amount e installment_count não são de recurring")
+            if self.end_date is not None and self.end_date < self.purchase_date:
+                raise ValueError("end_date precisa ser >= purchase_date")
+            return self
         if self.total_amount is None:
             raise ValueError(f"{self.kind} precisa de total_amount")
         if self.recurring_amount is not None or self.end_date is not None:
@@ -103,8 +112,11 @@ def _unprocessable(detail: str) -> HTTPException:
 async def create_commitment(
     body: CommitmentCreate, member: Member, session: Session
 ) -> CommitmentWithEntries:
-    """Cria o commitment e materializa todas as entries na mesma transação."""
-    assert body.total_amount is not None
+    """Cria o commitment e materializa as entries na mesma transação.
+
+    Parcelamento e avulso saem com todas as entries; recorrente sai com as do horizonte
+    rolante (`hoje + 24 meses`, no fuso do job de horizonte), limitadas pelo `end_date`.
+    """
     try:
         await service.ensure_references(
             session,
@@ -112,17 +124,32 @@ async def create_commitment(
             account_id=body.account_id,
             category_id=body.category_id,
         )
-        commitment = await create_installment_commitment(
-            session,
-            household_id=member.household_id,
-            account_id=body.account_id,
-            category_id=body.category_id,
-            kind=body.kind,
-            description=body.description,
-            purchase_date=body.purchase_date,
-            total_amount=body.total_amount,
-            installment_count=body.installment_count,
-        )
+        if body.kind == "recurring":
+            assert body.recurring_amount is not None
+            commitment = await create_recurring_commitment(
+                session,
+                household_id=member.household_id,
+                account_id=body.account_id,
+                category_id=body.category_id,
+                description=body.description,
+                purchase_date=body.purchase_date,
+                recurring_amount=body.recurring_amount,
+                end_date=body.end_date,
+                today=await service.today(session),
+            )
+        else:
+            assert body.total_amount is not None
+            commitment = await create_installment_commitment(
+                session,
+                household_id=member.household_id,
+                account_id=body.account_id,
+                category_id=body.category_id,
+                kind=body.kind,
+                description=body.description,
+                purchase_date=body.purchase_date,
+                total_amount=body.total_amount,
+                installment_count=body.installment_count,
+            )
     except service.CommitmentRuleError as exc:
         raise _unprocessable(str(exc)) from exc
     except AccountNotFoundError as exc:
