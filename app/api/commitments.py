@@ -9,7 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentMember, get_current_member
 from app.db.session import get_member_session
+from app.services import cascade
 from app.services import commitments as service
+from app.services.lifecycle import cancel_commitment
 from app.services.materialization import AccountNotFoundError, create_installment_commitment
 
 router = APIRouter(prefix="/commitments", tags=["commitments"])
@@ -150,20 +152,25 @@ async def list_active_commitments(member: Member, session: Session) -> list[Acti
 @router.delete(
     "/{commitment_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    responses={501: {"description": "keep_paid=true ainda não implementado"}},
+    responses={409: {"description": "keep_paid=true num commitment que não está active"}},
 )
 async def delete_commitment(
     commitment_id: uuid.UUID, member: Member, session: Session, keep_paid: bool = False
 ) -> Response:
     """Sem `keep_paid`, apaga o commitment e todas as entries, inclusive as pagas.
 
-    `keep_paid=true` é o cancelamento (preserva as pagas, remove as previstas), que
-    depende do motor de cancelamento e por ora responde 501 sem alterar nada.
+    `keep_paid=true` é o cancelamento: preserva as entries pagas e confirmadas, remove as
+    previstas e o commitment passa a `cancelled`. Só commitment `active` é cancelável.
     """
-    if keep_paid:
-        raise HTTPException(status.HTTP_501_NOT_IMPLEMENTED, "keep_paid=true ainda não é suportado")
     try:
-        await service.delete_commitment(session, member.household_id, commitment_id)
-    except service.CommitmentNotFoundError as exc:
+        if keep_paid:
+            await cancel_commitment(
+                session, household_id=member.household_id, commitment_id=commitment_id
+            )
+        else:
+            await service.delete_commitment(session, member.household_id, commitment_id)
+    except (service.CommitmentNotFoundError, cascade.CommitmentNotFoundError) as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Commitment não encontrado") from exc
+    except cascade.CommitmentStateError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -353,16 +353,36 @@ def test_delete_of_other_household_is_404(api: _Api) -> None:
     assert api.counts(foreign["id"]) == (1, 3)
 
 
-def test_delete_keep_paid_is_not_implemented_yet(api: _Api) -> None:
+def test_delete_keep_paid_cancels_and_keeps_paid_entries(api: _Api) -> None:
     household = api.household()
     created = _create(api, household)
+    api.pay(created["entries"][0]["id"])
 
     response = api.client.delete(
         f"/commitments/{created['id']}", params={"keep_paid": "true"}, headers=household.headers
     )
 
-    assert response.status_code == 501
-    assert api.counts(created["id"]) == (1, 3)
+    assert response.status_code == 204
+    assert api.counts(created["id"]) == (1, 1)
+    assert created["id"] not in _active(api, household)
+
+    again = api.client.delete(
+        f"/commitments/{created['id']}", params={"keep_paid": "true"}, headers=household.headers
+    )
+    assert again.status_code == 409
+    assert api.counts(created["id"]) == (1, 1)
+
+
+def test_delete_keep_paid_of_other_household_is_404(api: _Api) -> None:
+    mine, other = api.household(), api.household()
+    foreign = _create(api, other)
+
+    response = api.client.delete(
+        f"/commitments/{foreign['id']}", params={"keep_paid": "true"}, headers=mine.headers
+    )
+
+    assert response.status_code == 404
+    assert api.counts(foreign["id"]) == (1, 3)
 
 
 def test_endpoints_require_token(api: _Api) -> None:
