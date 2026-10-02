@@ -115,6 +115,10 @@ async def extend_recurring_horizon(
     ficam de fora. Sem `commitment_ids`, estende todos os que a sessão enxerga (sob RLS,
     os da household). Devolve quantas entries foram inseridas; o commit fica com quem
     chamou.
+
+    O job mensal (pg_cron) roda o espelho SQL desta função,
+    `slate_jobs.extend_recurring_horizon`; mudou a regra aqui, mude lá também
+    (`tests/test_horizon_job.py` compara as duas).
     """
     until = horizon_end(today)
     query = (
@@ -133,6 +137,9 @@ async def extend_recurring_horizon(
             & (Account.household_id == Commitment.household_id),
         )
         .where(Commitment.kind == "recurring", Commitment.status == "active")
+        # Trava contra uma cascata concorrente que mude `recurring_amount` entre a leitura
+        # e o INSERT: o valor velho ficaria para sempre, já que o conflito é descartado.
+        .with_for_update(of=Commitment)
     )
     if commitment_ids is not None:
         query = query.where(Commitment.id.in_(list(commitment_ids)))
