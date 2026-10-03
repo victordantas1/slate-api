@@ -25,7 +25,9 @@ from app.services.lifecycle import settle_if_paid
 __all__ = [
     "EntryNotFoundError",
     "EntryRuleError",
+    "EntryStateError",
     "PaidEntryError",
+    "confirm_entry",
     "edit_entry",
     "get_entry",
     "pay_entry",
@@ -34,6 +36,10 @@ __all__ = [
 
 class EntryRuleError(ValueError):
     """Pedido inválido para a entry (categoria, valor)."""
+
+
+class EntryStateError(ValueError):
+    """A entry não está no status que a operação exige."""
 
 
 async def get_entry(session: AsyncSession, household_id: uuid.UUID, entry_id: uuid.UUID) -> Entry:
@@ -121,4 +127,40 @@ async def pay_entry(
     entry.paid_at = paid_at if paid_at is not None else await session.scalar(select(func.now()))
     await session.flush()
     await settle_if_paid(session, household_id=household_id, commitment_id=commitment_id)
+    return entry
+
+
+async def confirm_entry(
+    session: AsyncSession,
+    household_id: uuid.UUID,
+    entry_id: uuid.UUID,
+    *,
+    idempotency_key: str | None = None,
+) -> Entry:
+    """Passa uma entry `previsto` a `confirmado`, gravando a chave de idempotência.
+
+    Trava o commitment antes da entry, como `pay_entry`. A escrita roda num savepoint:
+    se a chave violar a UNIQUE `(household_id, idempotency_key)`, o `IntegrityError`
+    propaga sem abortar a transação de quem chamou.
+    """
+    commitment_id = await session.scalar(
+        select(Entry.commitment_id).where(Entry.id == entry_id, Entry.household_id == household_id)
+    )
+    if commitment_id is None:
+        raise EntryNotFoundError(entry_id)
+    await _lock_commitment(session, household_id, commitment_id)
+    entry = await session.scalar(
+        select(Entry)
+        .where(Entry.id == entry_id, Entry.household_id == household_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if entry is None:
+        raise EntryNotFoundError(entry_id)
+    if entry.status != "previsto":
+        raise EntryStateError(f"entry está {entry.status}, só previsto é confirmável")
+    async with session.begin_nested():
+        entry.status = "confirmado"
+        entry.idempotency_key = idempotency_key
+        await session.flush()
     return entry

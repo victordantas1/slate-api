@@ -1290,6 +1290,59 @@
           }
         }
       }
+    },
+    "/ingest/entries": {
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Ingest Entries",
+        "description": "Recebe lançamentos do FinCoach em lote, de forma idempotente.\n\nToda entry criada aqui é gravada com `source='fincoach'`; a origem é a própria rota.\n\nCada item cria uma entry `confirmado` (um commitment `single`, pelo mesmo serviço do\n`POST /commitments`) ou, com `match_entry_id`, confirma uma entry `previsto`. Uma\nchave que já entrou devolve a entry dela sem gravar nada. O lote é atômico: um item\ninválido devolve o erro com o índice dele e nenhum item é gravado.",
+        "operationId": "ingest_entries_ingest_entries_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestBatchOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "match_entry_id não encontrada"
+          },
+          "409": {
+            "description": "match_entry_id não está previsto"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -2516,6 +2569,162 @@
           "ratio"
         ],
         "title": "IncomePointOut"
+      },
+      "IngestBatch": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/IngestEntryIn"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Entries"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entries"
+        ],
+        "title": "IngestBatch"
+      },
+      "IngestBatchOut": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/IngestResultOut"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results"
+        ],
+        "title": "IngestBatchOut"
+      },
+      "IngestEntryIn": {
+        "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "description": "Chave do lançamento no FinCoach; reenviar a mesma chave não duplica"
+          },
+          "match_entry_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Entry Id",
+            "description": "Entry `previsto` a confirmar em vez de criar uma nova; com ela, os campos de criação são ignorados"
+          },
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "purchase_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Date"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "idempotency_key"
+        ],
+        "title": "IngestEntryIn"
+      },
+      "IngestResultOut": {
+        "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "title": "Idempotency Key"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "created",
+              "matched",
+              "existing"
+            ],
+            "title": "Outcome",
+            "description": "created: entry nova; matched: entry existente confirmada; existing: a chave já tinha entrado e nada foi gravado"
+          },
+          "entry": {
+            "$ref": "#/components/schemas/EntryOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "idempotency_key",
+          "outcome",
+          "entry"
+        ],
+        "title": "IngestResultOut"
       },
       "MonthAccountOut": {
         "properties": {
