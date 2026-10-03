@@ -13,7 +13,14 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Category, Entry
-from app.services.cascade import EntryNotFoundError, PaidEntryError, Scope, edit_entries
+from app.services.cascade import (
+    EntryNotFoundError,
+    PaidEntryError,
+    Scope,
+    _lock_commitment,
+    edit_entries,
+)
+from app.services.lifecycle import settle_if_paid
 
 __all__ = [
     "EntryNotFoundError",
@@ -89,7 +96,17 @@ async def pay_entry(
     entry_id: uuid.UUID,
     paid_at: datetime | None = None,
 ) -> Entry:
-    """Marca a entry como `pago` com `paid_at` (padrão: agora, no relógio do banco)."""
+    """Marca a entry como `pago` com `paid_at` (padrão: agora, no relógio do banco).
+
+    Trava o commitment antes da entry, na mesma ordem da cascata, e no fim chama
+    `settle_if_paid`: pagar a última parcela passa o commitment a `settled`.
+    """
+    commitment_id = await session.scalar(
+        select(Entry.commitment_id).where(Entry.id == entry_id, Entry.household_id == household_id)
+    )
+    if commitment_id is None:
+        raise EntryNotFoundError(entry_id)
+    await _lock_commitment(session, household_id, commitment_id)
     entry = await session.scalar(
         select(Entry)
         .where(Entry.id == entry_id, Entry.household_id == household_id)
@@ -103,4 +120,5 @@ async def pay_entry(
     entry.status = "pago"
     entry.paid_at = paid_at if paid_at is not None else await session.scalar(select(func.now()))
     await session.flush()
+    await settle_if_paid(session, household_id=household_id, commitment_id=commitment_id)
     return entry

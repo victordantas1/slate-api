@@ -1,9 +1,13 @@
+import uuid
 from collections.abc import Iterator
 from decimal import Decimal
 from typing import Any
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncConnection
 
+from app.db.models import Commitment
 from tests.api_support import category, create, entry_row, open_api
 from tests.test_commitments_api import _Api
 
@@ -206,3 +210,30 @@ def test_entries_endpoints_require_token(api: _Api) -> None:
         == 401
     )
     assert api.client.post(f"/entries/{entry['id']}/pay").status_code == 401
+
+
+def _commitment_status(api: _Api, commitment_id: str) -> str:
+    async def _get(conn: AsyncConnection) -> str:
+        return (
+            await conn.execute(
+                select(Commitment.status).where(Commitment.id == uuid.UUID(commitment_id))
+            )
+        ).scalar_one()
+
+    return api._run(_get)
+
+
+def test_paying_last_installment_settles_commitment(api: _Api) -> None:
+    household = api.household()
+    commitment = create(api, household)
+    *first, last = commitment["entries"]
+
+    for entry in first:
+        response = api.client.post(f"/entries/{entry['id']}/pay", headers=household.headers)
+        assert response.status_code == 200, response.text
+    assert _commitment_status(api, commitment["id"]) == "active"
+
+    response = api.client.post(f"/entries/{last['id']}/pay", headers=household.headers)
+
+    assert response.status_code == 200, response.text
+    assert _commitment_status(api, commitment["id"]) == "settled"
