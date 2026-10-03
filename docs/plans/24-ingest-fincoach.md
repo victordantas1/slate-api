@@ -71,6 +71,10 @@ Reenviar é seguro, porque o que já entrou volta como `existing`.
   a confirmou.
 - Corrida entre duas requisições com a mesma chave: a segunda pega a violação da
   UNIQUE dentro do savepoint e devolve a entry da primeira como `existing`.
+- Chave já usada com outro `match_entry_id` → 409, em vez de devolver a entry antiga
+  como se o casamento novo tivesse acontecido.
+- Os commitments das entries a casar são travados no início do lote, em ordem de id,
+  para dois lotes concorrentes não travarem em ordens opostas.
 - Nenhuma tabela nova, nenhuma migration: a UNIQUE `(household_id, idempotency_key)`
   e as colunas `source`/`idempotency_key` já existem desde a #6.
 

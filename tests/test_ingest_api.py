@@ -165,6 +165,18 @@ def test_match_confirms_existing_entry(api: _Api) -> None:
     assert again.json()["results"][0]["entry"]["id"] == target["id"]
 
 
+def test_reused_key_on_other_match_is_409(api: _Api) -> None:
+    household = api.household()
+    first, second, _ = create(api, household)["entries"]
+    ok = _ingest(api, household, {"idempotency_key": "fc-1", "match_entry_id": first["id"]})
+    assert ok.status_code == 200, ok.text
+
+    response = _ingest(api, household, {"idempotency_key": "fc-1", "match_entry_id": second["id"]})
+
+    assert response.status_code == 409
+    assert entry_row(api, second["id"])["status"] == "previsto"
+
+
 def test_match_paid_entry_is_409_and_rolls_back_batch(api: _Api) -> None:
     household = api.household()
     target = create(api, household)["entries"][0]

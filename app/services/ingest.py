@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Entry
+from app.db.models import Commitment, Entry
 from app.services import commitments, entries
 
 Outcome = Literal["created", "matched", "existing"]
@@ -94,6 +94,8 @@ async def ingest_one(
     key = item.idempotency_key
     existing = await _find_by_key(session, household_id, key)
     if existing is not None:
+        if item.match_entry_id is not None and existing.id != item.match_entry_id:
+            raise entries.EntryStateError("idempotency_key já usada em outra entry")
         return IngestResult(key, "existing", existing)
     try:
         return await _write(session, household_id, item)
@@ -107,6 +109,28 @@ async def ingest_one(
         return IngestResult(key, "existing", existing)
 
 
+async def _lock_matched_commitments(
+    session: AsyncSession, household_id: uuid.UUID, items: Sequence[IngestItem]
+) -> None:
+    """Trava de uma vez, em ordem de id, os commitments das entries a casar.
+
+    Sem isso cada item travaria o seu na ordem do lote, e dois lotes com os mesmos
+    commitments em ordens diferentes se esperariam até o Postgres abortar um deles.
+    """
+    match_ids = {i.match_entry_id for i in items if i.match_entry_id is not None}
+    if not match_ids:
+        return
+    commitment_ids = select(Entry.commitment_id).where(
+        Entry.household_id == household_id, Entry.id.in_(match_ids)
+    )
+    await session.execute(
+        select(Commitment.id)
+        .where(Commitment.household_id == household_id, Commitment.id.in_(commitment_ids))
+        .order_by(Commitment.id)
+        .with_for_update()
+    )
+
+
 async def ingest_entries(
     session: AsyncSession, household_id: uuid.UUID, items: Sequence[IngestItem]
 ) -> list[IngestResult]:
@@ -115,6 +139,7 @@ async def ingest_entries(
     Qualquer falha de item vira `IngestItemError` e o chamador desfaz o lote inteiro;
     reenviar depois é seguro, porque o que entrou volta como `existing`.
     """
+    await _lock_matched_commitments(session, household_id, items)
     results = []
     for index, item in enumerate(items):
         try:
