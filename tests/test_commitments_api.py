@@ -2,14 +2,14 @@ import asyncio
 import time
 import uuid
 from collections.abc import Awaitable, Callable, Iterator
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 
 import jwt
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, func, insert, select, update
+from sqlalchemy import delete, func, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from app.db.models import Account, Category, Commitment, Entry, Household, Member
@@ -159,6 +159,16 @@ class _Api:
 
         self._run(_delete)
 
+    def today(self) -> date:
+        """O "hoje" que a API usa para o horizonte: o mesmo fuso do job de horizonte."""
+
+        async def _today(conn: AsyncConnection) -> date:
+            value = await conn.scalar(text("SELECT (now() AT TIME ZONE 'America/Sao_Paulo')::date"))
+            assert isinstance(value, date)
+            return value
+
+        return self._run(_today)
+
     def set_status(self, commitment_id: str, status: str) -> None:
         async def _set(conn: AsyncConnection) -> None:
             await conn.execute(
@@ -231,6 +241,54 @@ def test_post_single_has_one_entry_with_full_amount(api: _Api) -> None:
     assert [Decimal(e["amount"]) for e in body["entries"]] == [Decimal("89.90")]
 
 
+def _recurring(**overrides: Any) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "kind": "recurring",
+        "description": "Streaming",
+        "total_amount": None,
+        "installment_count": None,
+        "recurring_amount": "39.90",
+    }
+    body.update(overrides)
+    return body
+
+
+def test_post_recurring_materializes_up_to_end_date(api: _Api) -> None:
+    household = api.household()
+
+    created = _create(api, household, **_recurring(end_date="2027-05-10"))
+
+    assert created["kind"] == "recurring"
+    assert created["recurring_amount"] == "39.90"
+    assert created["total_amount"] is None
+    assert created["installment_count"] is None
+    assert created["end_date"] == "2027-05-10"
+    # purchase 2026-11-15, offset 1: primeira competência 2026-12, última 2027-06.
+    entries = created["entries"]
+    assert [e["competencia"] for e in entries] == [
+        f"{y}-{m:02d}-01" for y, m in [(2026, 12), *((2027, n) for n in range(1, 7))]
+    ]
+    assert [e["seq"] for e in entries] == list(range(1, 8))
+    assert {e["amount"] for e in entries} == {"39.90"}
+    assert {e["status"] for e in entries} == {"previsto"}
+    assert api.counts(created["id"]) == (1, 7)
+
+
+def test_post_recurring_without_end_date_fills_the_horizon(api: _Api) -> None:
+    household = api.household()
+
+    created = _create(api, household, **_recurring())
+
+    today = api.today()
+    horizon = date(today.year + 2, today.month, 1)
+    competencias = [e["competencia"] for e in created["entries"]]
+    assert competencias[0] == "2026-12-01"
+    assert competencias[-1] == horizon.isoformat()
+    item = _active(api, household)[created["id"]]
+    assert item["payoff_month"] is None
+    assert Decimal(item["outstanding_balance"]) == Decimal("39.90") * len(competencias)
+
+
 @pytest.mark.parametrize(
     "overrides",
     [
@@ -241,11 +299,15 @@ def test_post_single_has_one_entry_with_full_amount(api: _Api) -> None:
         {"total_amount": "10.001"},
         {"installment_count": 0},
         {"description": "   "},
+        {"kind": "recurring", "total_amount": None, "installment_count": None},
+        {"kind": "recurring", "installment_count": None, "recurring_amount": "39.90"},
+        {"kind": "recurring", "total_amount": None, "recurring_amount": "39.90"},
         {
             "kind": "recurring",
             "total_amount": None,
             "installment_count": None,
             "recurring_amount": "39.90",
+            "end_date": "2026-11-14",
         },
         {"recurring_amount": "39.90"},
         {"end_date": "2027-12-01"},

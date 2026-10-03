@@ -743,7 +743,7 @@
           "commitments"
         ],
         "summary": "Create Commitment",
-        "description": "Cria o commitment e materializa todas as entries na mesma transação.",
+        "description": "Cria o commitment e materializa as entries na mesma transação.\n\nParcelamento e avulso saem com todas as entries; recorrente sai com as do horizonte\nrolante (`hoje + 24 meses`, no fuso do job de horizonte), limitadas pelo `end_date`.",
         "operationId": "create_commitment_commitments_post",
         "requestBody": {
           "content": {

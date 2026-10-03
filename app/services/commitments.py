@@ -1,8 +1,9 @@
 """Criação, consultas e remoção de commitments.
 
-`create_commitment` é o único caminho de escrita de commitment novo: a API manual e o
-ingest do FinCoach passam por ele. Saldo devedor e mês de quitação são agregados das
-entries não pagas (D10), calculados na consulta e nunca gravados.
+`create_commitment` e `create_recurring` são os únicos caminhos de escrita de commitment
+novo: a API manual e o ingest do FinCoach passam por eles. Saldo devedor e mês de
+quitação são agregados das entries não pagas (D10), calculados na consulta e nunca
+gravados.
 """
 
 import uuid
@@ -11,11 +12,14 @@ from datetime import date
 from decimal import Decimal
 from typing import NamedTuple
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Account, Category, Commitment, Entry
-from app.services.materialization import create_installment_commitment
+from app.services.materialization import (
+    create_installment_commitment,
+    create_recurring_commitment,
+)
 
 
 class CommitmentNotFoundError(LookupError):
@@ -60,6 +64,18 @@ async def ensure_references(
         raise CommitmentRuleError("categoria está arquivada")
 
 
+# Mesmo relógio e fuso do job de horizonte (`slate_jobs.extend_recurring_horizon`), para
+# o POST e o job concordarem sobre o mês corrente na virada do mês.
+_TODAY = text("SELECT (now() AT TIME ZONE 'America/Sao_Paulo')::date")
+
+
+async def today(session: AsyncSession) -> date:
+    """O dia corrente em America/Sao_Paulo, pelo relógio do banco."""
+    value = await session.scalar(_TODAY)
+    assert isinstance(value, date)
+    return value
+
+
 async def create_commitment(
     session: AsyncSession,
     household_id: uuid.UUID,
@@ -90,6 +106,32 @@ async def create_commitment(
         entry_status=entry_status,
         source=source,
         idempotency_key=idempotency_key,
+    )
+
+
+async def create_recurring(
+    session: AsyncSession,
+    household_id: uuid.UUID,
+    *,
+    account_id: uuid.UUID,
+    category_id: uuid.UUID,
+    description: str,
+    purchase_date: date,
+    recurring_amount: Decimal,
+    end_date: date | None,
+) -> Commitment:
+    """Valida conta e categoria e materializa o recorrente até o fim do horizonte."""
+    await ensure_references(session, household_id, account_id=account_id, category_id=category_id)
+    return await create_recurring_commitment(
+        session,
+        household_id=household_id,
+        account_id=account_id,
+        category_id=category_id,
+        description=description,
+        purchase_date=purchase_date,
+        recurring_amount=recurring_amount,
+        end_date=end_date,
+        today=await today(session),
     )
 
 
