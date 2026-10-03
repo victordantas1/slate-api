@@ -8,6 +8,7 @@ from app.api.entries import router as entries_router
 from app.api.external_holders import router as external_holders_router
 from app.api.health import router as health_router
 from app.api.months import router as months_router
+from app.api.reports import router as reports_router
 from app.core.config import get_settings
 
 
@@ -27,6 +28,7 @@ def create_app() -> FastAPI:
     application.include_router(commitments_router)
     application.include_router(entries_router)
     application.include_router(months_router)
+    application.include_router(reports_router)
     return application
 
 
