@@ -12,7 +12,7 @@ from app.db.session import get_member_session
 from app.services import cascade
 from app.services import commitments as service
 from app.services.lifecycle import cancel_commitment
-from app.services.materialization import AccountNotFoundError, create_installment_commitment
+from app.services.materialization import AccountNotFoundError
 
 router = APIRouter(prefix="/commitments", tags=["commitments"])
 
@@ -106,15 +106,9 @@ async def create_commitment(
     """Cria o commitment e materializa todas as entries na mesma transação."""
     assert body.total_amount is not None
     try:
-        await service.ensure_references(
+        commitment = await service.create_commitment(
             session,
             member.household_id,
-            account_id=body.account_id,
-            category_id=body.category_id,
-        )
-        commitment = await create_installment_commitment(
-            session,
-            household_id=member.household_id,
             account_id=body.account_id,
             category_id=body.category_id,
             kind=body.kind,

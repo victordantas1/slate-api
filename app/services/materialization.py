@@ -48,8 +48,14 @@ async def create_installment_commitment(
     purchase_date: date,
     total_amount: Decimal,
     installment_count: int | None,
+    entry_status: str = "previsto",
+    source: str = "manual",
+    idempotency_key: str | None = None,
 ) -> Commitment:
     """Grava o commitment e todas as suas entries, ou nada.
+
+    `entry_status`, `source` e `idempotency_key` vão para todas as entries; a chave é
+    única por household, então só cabe em commitment de uma entry.
 
     Roda num savepoint dentro da transação de quem chama: uma violação de constraint
     desfaz commitment e entries juntos e propaga o `IntegrityError`, sem abortar a
@@ -63,6 +69,8 @@ async def create_installment_commitment(
         raise ValueError(f"kind {kind!r} não é materializado como parcelamento")
     if installment_count is None:
         raise ValueError("installment precisa de installment_count")
+    if idempotency_key is not None and installment_count != 1:
+        raise ValueError("idempotency_key só cabe em commitment de uma entry")
 
     offset = await _get_offset(session, household_id, account_id)
 
@@ -91,9 +99,10 @@ async def create_installment_commitment(
                     "seq": p.seq,
                     "competencia": p.competencia,
                     "amount": p.amount,
-                    "status": "previsto",
-                    "source": "manual",
+                    "status": entry_status,
+                    "source": source,
                     "edited_manually": False,
+                    "idempotency_key": idempotency_key,
                 }
                 for p in plan
             ],
