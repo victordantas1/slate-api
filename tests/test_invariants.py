@@ -17,11 +17,14 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from sqlalchemy import Row, delete, func, select, update
+from sqlalchemy import Row, delete, func, insert, select, update
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Commitment, Entry
+from app.db.models import Category, Commitment, Entry
+from app.domain.cascade import InvalidRescheduleError
+from app.services.cascade import PaidEntryError, Scope, edit_entries, reschedule_installments
+from app.services.lifecycle import cancel_commitment, end_recurring
 from app.services.materialization import create_recurring_commitment, extend_recurring_horizon
 from tests.factories import HouseholdCtx, entries_of, make_commitment, make_household
 
@@ -240,14 +243,153 @@ async def _extend_horizon(session: AsyncSession, household: HouseholdCtx) -> Non
     await extend_recurring_horizon(session, today=date(2027, 10, 2))
 
 
-# Toda operação do motor que grava entries entra aqui. A cascata de edição (#12)
-# acrescenta a sua.
+# As operações abaixo agem sobre os dois commitments que o teste da invariante 2 monta,
+# com entries pagas no meio do escopo de cada uma.
+
+
+async def _setup_commitment(
+    session: AsyncSession, household: HouseholdCtx, kind: str
+) -> Commitment:
+    query = select(Commitment).where(
+        Commitment.household_id == household.household_id, Commitment.kind == kind
+    )
+    return (await session.scalars(query)).one()
+
+
+async def _entry_id(session: AsyncSession, commitment_id: uuid.UUID, seq: int) -> uuid.UUID:
+    query = select(Entry.id).where(Entry.commitment_id == commitment_id, Entry.seq == seq)
+    return (await session.scalars(query)).one()
+
+
+async def _new_category(session: AsyncSession, household: HouseholdCtx) -> uuid.UUID:
+    category_id: uuid.UUID = (
+        await session.execute(
+            insert(Category)
+            .values(household_id=household.household_id, name="Lazer", direction="expense")
+            .returning(Category.id)
+        )
+    ).scalar_one()
+    return category_id
+
+
+async def _edit(
+    session: AsyncSession, household: HouseholdCtx, kind: str, seq: int, scope: Scope
+) -> None:
+    commitment = await _setup_commitment(session, household, kind)
+    await edit_entries(
+        session,
+        household_id=household.household_id,
+        entry_id=await _entry_id(session, commitment.id, seq),
+        scope=scope,
+        amount=Decimal("77.70"),
+        category_id=await _new_category(session, household),
+    )
+
+
+async def _edit_this(session: AsyncSession, household: HouseholdCtx) -> None:
+    await _edit(session, household, "installment", 3, "this")
+
+
+async def _edit_this_paid_refused(session: AsyncSession, household: HouseholdCtx) -> None:
+    with pytest.raises(PaidEntryError):
+        await _edit(session, household, "installment", 2, "this")
+
+
+async def _edit_forward_installment(session: AsyncSession, household: HouseholdCtx) -> None:
+    # Âncora paga: o `forward` parte dela, mas não a altera.
+    await _edit(session, household, "installment", 2, "forward")
+
+
+async def _edit_all_installment(session: AsyncSession, household: HouseholdCtx) -> None:
+    await _edit(session, household, "installment", 3, "all")
+
+
+async def _edit_forward_recurring(session: AsyncSession, household: HouseholdCtx) -> None:
+    await _edit(session, household, "recurring", 1, "forward")
+    await extend_recurring_horizon(session, today=date(2027, 10, 2))
+
+
+async def _edit_all_recurring(session: AsyncSession, household: HouseholdCtx) -> None:
+    await _edit(session, household, "recurring", 2, "all")
+
+
+async def _reschedule(session: AsyncSession, household: HouseholdCtx, **changes: Any) -> None:
+    commitment = await _setup_commitment(session, household, "installment")
+    await reschedule_installments(
+        session, household_id=household.household_id, commitment_id=commitment.id, **changes
+    )
+
+
+async def _reschedule_shrink(session: AsyncSession, household: HouseholdCtx) -> None:
+    # Encolhe até a última paga (seq 4) e muda o total: as livres 5 e 6 saem.
+    await _reschedule(session, household, installment_count=4, total_amount=Decimal("900.00"))
+
+
+async def _reschedule_grow(session: AsyncSession, household: HouseholdCtx) -> None:
+    await _reschedule(session, household, installment_count=12, total_amount=Decimal("2000.00"))
+
+
+async def _reschedule_refused(session: AsyncSession, household: HouseholdCtx) -> None:
+    with pytest.raises(InvalidRescheduleError):
+        await _reschedule(session, household, installment_count=3)
+
+
+async def _cancel(session: AsyncSession, household: HouseholdCtx, kind: str) -> None:
+    commitment = await _setup_commitment(session, household, kind)
+    await cancel_commitment(
+        session, household_id=household.household_id, commitment_id=commitment.id
+    )
+
+
+async def _cancel_installment(session: AsyncSession, household: HouseholdCtx) -> None:
+    await _cancel(session, household, "installment")
+
+
+async def _cancel_recurring(session: AsyncSession, household: HouseholdCtx) -> None:
+    await _cancel(session, household, "recurring")
+    await extend_recurring_horizon(session, today=date(2027, 10, 2))
+
+
+async def _end_recurring(session: AsyncSession, household: HouseholdCtx, end_date: date) -> None:
+    commitment = await _setup_commitment(session, household, "recurring")
+    await end_recurring(
+        session,
+        household_id=household.household_id,
+        commitment_id=commitment.id,
+        end_date=end_date,
+        today=TODAY,
+    )
+
+
+async def _end_recurring_before_paid(session: AsyncSession, household: HouseholdCtx) -> None:
+    # Fim no mês da compra: a paga de seq 3 fica depois da última competência.
+    await _end_recurring(session, household, date(2026, 10, 10))
+
+
+async def _end_recurring_later(session: AsyncSession, household: HouseholdCtx) -> None:
+    await _end_recurring(session, household, date(2028, 6, 30))
+
+
+# Toda operação do motor que grava entries entra aqui.
 ENGINE_OPERATIONS: dict[str, EngineOperation] = {
     "materializa-outro-parcelamento": _materialize_same_account,
     "materializa-single": _materialize_single_same_month,
     "materializacao-que-falha": _failed_materialization,
     "materializa-recorrente": _materialize_recurring,
     "estende-horizonte": _extend_horizon,
+    "edita-this": _edit_this,
+    "edita-this-paga-recusada": _edit_this_paid_refused,
+    "edita-forward-parcelamento": _edit_forward_installment,
+    "edita-all-parcelamento": _edit_all_installment,
+    "edita-forward-recorrente": _edit_forward_recurring,
+    "edita-all-recorrente": _edit_all_recurring,
+    "recalcula-parcelas-encolhe": _reschedule_shrink,
+    "recalcula-parcelas-cresce": _reschedule_grow,
+    "recalculo-recusado": _reschedule_refused,
+    "cancela-parcelamento": _cancel_installment,
+    "cancela-recorrente": _cancel_recurring,
+    "encerra-recorrente-antes-da-paga": _end_recurring_before_paid,
+    "encerra-recorrente-depois": _end_recurring_later,
 }
 
 
