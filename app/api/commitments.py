@@ -12,11 +12,7 @@ from app.db.session import get_member_session
 from app.services import cascade
 from app.services import commitments as service
 from app.services.lifecycle import cancel_commitment
-from app.services.materialization import (
-    AccountNotFoundError,
-    create_installment_commitment,
-    create_recurring_commitment,
-)
+from app.services.materialization import AccountNotFoundError
 
 router = APIRouter(prefix="/commitments", tags=["commitments"])
 
@@ -118,30 +114,23 @@ async def create_commitment(
     rolante (`hoje + 24 meses`, no fuso do job de horizonte), limitadas pelo `end_date`.
     """
     try:
-        await service.ensure_references(
-            session,
-            member.household_id,
-            account_id=body.account_id,
-            category_id=body.category_id,
-        )
         if body.kind == "recurring":
             assert body.recurring_amount is not None
-            commitment = await create_recurring_commitment(
+            commitment = await service.create_recurring(
                 session,
-                household_id=member.household_id,
+                member.household_id,
                 account_id=body.account_id,
                 category_id=body.category_id,
                 description=body.description,
                 purchase_date=body.purchase_date,
                 recurring_amount=body.recurring_amount,
                 end_date=body.end_date,
-                today=await service.today(session),
             )
         else:
             assert body.total_amount is not None
-            commitment = await create_installment_commitment(
+            commitment = await service.create_commitment(
                 session,
-                household_id=member.household_id,
+                member.household_id,
                 account_id=body.account_id,
                 category_id=body.category_id,
                 kind=body.kind,

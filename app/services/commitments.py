@@ -1,7 +1,9 @@
-"""Consultas e remoção de commitments.
+"""Criação, consultas e remoção de commitments.
 
-Saldo devedor e mês de quitação são agregados das entries não pagas (D10), calculados
-na consulta e nunca gravados.
+`create_commitment` e `create_recurring` são os únicos caminhos de escrita de commitment
+novo: a API manual e o ingest do FinCoach passam por eles. Saldo devedor e mês de
+quitação são agregados das entries não pagas (D10), calculados na consulta e nunca
+gravados.
 """
 
 import uuid
@@ -14,6 +16,10 @@ from sqlalchemy import delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Account, Category, Commitment, Entry
+from app.services.materialization import (
+    create_installment_commitment,
+    create_recurring_commitment,
+)
 
 
 class CommitmentNotFoundError(LookupError):
@@ -68,6 +74,65 @@ async def today(session: AsyncSession) -> date:
     value = await session.scalar(_TODAY)
     assert isinstance(value, date)
     return value
+
+
+async def create_commitment(
+    session: AsyncSession,
+    household_id: uuid.UUID,
+    *,
+    account_id: uuid.UUID,
+    category_id: uuid.UUID,
+    kind: str,
+    description: str,
+    purchase_date: date,
+    total_amount: Decimal,
+    installment_count: int | None,
+    entry_status: str = "previsto",
+    source: str = "manual",
+    idempotency_key: str | None = None,
+) -> Commitment:
+    """Valida conta e categoria e materializa o commitment com todas as entries."""
+    await ensure_references(session, household_id, account_id=account_id, category_id=category_id)
+    return await create_installment_commitment(
+        session,
+        household_id=household_id,
+        account_id=account_id,
+        category_id=category_id,
+        kind=kind,
+        description=description,
+        purchase_date=purchase_date,
+        total_amount=total_amount,
+        installment_count=installment_count,
+        entry_status=entry_status,
+        source=source,
+        idempotency_key=idempotency_key,
+    )
+
+
+async def create_recurring(
+    session: AsyncSession,
+    household_id: uuid.UUID,
+    *,
+    account_id: uuid.UUID,
+    category_id: uuid.UUID,
+    description: str,
+    purchase_date: date,
+    recurring_amount: Decimal,
+    end_date: date | None,
+) -> Commitment:
+    """Valida conta e categoria e materializa o recorrente até o fim do horizonte."""
+    await ensure_references(session, household_id, account_id=account_id, category_id=category_id)
+    return await create_recurring_commitment(
+        session,
+        household_id=household_id,
+        account_id=account_id,
+        category_id=category_id,
+        description=description,
+        purchase_date=purchase_date,
+        recurring_amount=recurring_amount,
+        end_date=end_date,
+        today=await today(session),
+    )
 
 
 async def list_entries(session: AsyncSession, commitment_id: uuid.UUID) -> Sequence[Entry]:

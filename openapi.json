@@ -563,6 +563,37 @@
         ]
       }
     },
+    "/external-holders/balance": {
+      "get": {
+        "tags": [
+          "external-holders"
+        ],
+        "summary": "List External Holder Balances",
+        "description": "Quanto a household deve a cada titular externo. Derivado, nunca armazenado:\nmarcar a entry como `pago` é o registro do reembolso, sem transferência à parte.\nTitular sem nada em aberto vem com saldo zero.",
+        "operationId": "list_external_holder_balances_external_holders_balance_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExternalHolderBalanceOut"
+                  },
+                  "type": "array",
+                  "title": "Response List External Holder Balances External Holders Balance Get"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/external-holders/{holder_id}": {
       "get": {
         "tags": [
@@ -836,6 +867,481 @@
             }
           }
         }
+      }
+    },
+    "/entries/{entry_id}": {
+      "patch": {
+        "tags": [
+          "entries"
+        ],
+        "summary": "Update Entry",
+        "description": "Edita `amount` e/ou `category_id` com a cascata do motor.\n\n- `this`: só esta entry, que passa a `edited_manually` e deixa de seguir o commitment.\n- `forward`: esta e as seguintes do commitment, menos pagas e editadas à mão.\n- `all`: todas do commitment, menos pagas e editadas à mão.\n\nEm `forward` e `all` o commitment também muda, para o horizonte futuro herdar.",
+        "operationId": "update_entry_entries__entry_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "entry_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Entry Id"
+            }
+          },
+          {
+            "name": "scope",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "this",
+                "forward",
+                "all"
+              ],
+              "type": "string",
+              "description": "this, forward ou all; sem padrão",
+              "title": "Scope"
+            },
+            "description": "this, forward ou all; sem padrão"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EntryUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryUpdateOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entry não encontrada"
+          },
+          "409": {
+            "description": "Entry já está paga"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/entries/{entry_id}/pay": {
+      "post": {
+        "tags": [
+          "entries"
+        ],
+        "summary": "Pay Entry",
+        "description": "Marca a entry como `pago`. Sem `paid_at`, usa o horário do banco.",
+        "operationId": "pay_entry_entries__entry_id__pay_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "entry_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Entry Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/EntryPay"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Entry não encontrada"
+          },
+          "409": {
+            "description": "Entry já está paga"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/months/{month}": {
+      "get": {
+        "tags": [
+          "months"
+        ],
+        "summary": "Get Month",
+        "description": "Entries da competência agrupadas por conta, com entradas, saídas, saldo e o total\ncomprometido em parcelas, no mês e por conta. Mês sem lançamento devolve listas\nvazias e totais zerados.",
+        "operationId": "get_month_months__month__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "month",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+              "description": "Competência, yyyy-mm",
+              "title": "Month"
+            },
+            "description": "Competência, yyyy-mm"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonthOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reports/debt-curve": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Debt Curve",
+        "description": "Quanto falta pagar de parcelamentos em cada mês futuro. Conta só entries de\ncommitment `installment` que não estão `pago`; mês sem parcela vem com zero.",
+        "operationId": "debt_curve_reports_debt_curve_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "months",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 120,
+              "minimum": 1,
+              "default": 24,
+              "title": "Months"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Primeira competência, yyyy-mm. Padrão: mês atual",
+              "title": "Start"
+            },
+            "description": "Primeira competência, yyyy-mm. Padrão: mês atual"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DebtPointOut"
+                  },
+                  "title": "Response Debt Curve Reports Debt Curve Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reports/committed-income": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Committed Income",
+        "description": "Fração das entradas de cada mês comprometida com parcelas.",
+        "operationId": "committed_income_reports_committed_income_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "months",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 120,
+              "minimum": 1,
+              "default": 12,
+              "title": "Months"
+            }
+          },
+          {
+            "name": "start",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Primeira competência, yyyy-mm. Padrão: mês atual",
+              "title": "Start"
+            },
+            "description": "Primeira competência, yyyy-mm. Padrão: mês atual"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IncomePointOut"
+                  },
+                  "title": "Response Committed Income Reports Committed Income Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reports/category-delta": {
+      "get": {
+        "tags": [
+          "reports"
+        ],
+        "summary": "Category Delta",
+        "description": "Total de cada categoria no mês contra a média dos `baseline` meses anteriores.",
+        "operationId": "category_delta_reports_category_delta_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Competência, yyyy-mm. Padrão: mês atual",
+              "title": "Month"
+            },
+            "description": "Competência, yyyy-mm. Padrão: mês atual"
+          },
+          {
+            "name": "baseline",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 24,
+              "minimum": 1,
+              "default": 3,
+              "title": "Baseline"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryDeltaReportOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ingest/entries": {
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Ingest Entries",
+        "description": "Recebe lançamentos do FinCoach em lote, de forma idempotente.\n\nToda entry criada aqui é gravada com `source='fincoach'`; a origem é a própria rota.\n\nCada item cria uma entry `confirmado` (um commitment `single`, pelo mesmo serviço do\n`POST /commitments`) ou, com `match_entry_id`, confirma uma entry `previsto`. Uma\nchave que já entrou devolve a entry dela sem gravar nada. O lote é atômico: um item\ninválido devolve o erro com o índice dele e nenhum item é gravado.",
+        "operationId": "ingest_entries_ingest_entries_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestBatchOut"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "match_entry_id não encontrada"
+          },
+          "409": {
+            "description": "match_entry_id não está previsto"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     }
   },
@@ -1327,6 +1833,109 @@
         ],
         "title": "CategoryCreate"
       },
+      "CategoryDeltaOut": {
+        "properties": {
+          "category_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Category Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "expense",
+              "income"
+            ],
+            "title": "Direction"
+          },
+          "parent_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Id"
+          },
+          "current": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Current",
+            "description": "Total da categoria no mês"
+          },
+          "baseline_average": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Baseline Average",
+            "description": "Média dos meses anteriores; mês sem lançamento conta como zero"
+          },
+          "delta": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Delta",
+            "description": "current - baseline_average"
+          },
+          "delta_pct": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delta Pct",
+            "description": "delta / baseline_average, com 4 casas; nulo quando a média é zero"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category_id",
+          "name",
+          "direction",
+          "parent_id",
+          "current",
+          "baseline_average",
+          "delta",
+          "delta_pct"
+        ],
+        "title": "CategoryDeltaOut"
+      },
+      "CategoryDeltaReportOut": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "format": "date",
+            "title": "Month"
+          },
+          "baseline": {
+            "type": "integer",
+            "title": "Baseline"
+          },
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryDeltaOut"
+            },
+            "type": "array",
+            "title": "Categories"
+          }
+        },
+        "type": "object",
+        "required": [
+          "month",
+          "baseline",
+          "categories"
+        ],
+        "title": "CategoryDeltaReportOut"
+      },
       "CategoryOut": {
         "properties": {
           "id": {
@@ -1643,6 +2252,27 @@
         ],
         "title": "CommitmentWithEntries"
       },
+      "DebtPointOut": {
+        "properties": {
+          "competencia": {
+            "type": "string",
+            "format": "date",
+            "title": "Competencia"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "description": "Soma das parcelas não pagas da competência"
+          }
+        },
+        "type": "object",
+        "required": [
+          "competencia",
+          "amount"
+        ],
+        "title": "DebtPointOut"
+      },
       "EntryOut": {
         "properties": {
           "id": {
@@ -1716,6 +2346,102 @@
           "edited_manually"
         ],
         "title": "EntryOut"
+      },
+      "EntryPay": {
+        "properties": {
+          "paid_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          }
+        },
+        "type": "object",
+        "title": "EntryPay"
+      },
+      "EntryUpdate": {
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          }
+        },
+        "type": "object",
+        "title": "EntryUpdate"
+      },
+      "EntryUpdateOut": {
+        "properties": {
+          "affected": {
+            "type": "integer",
+            "title": "Affected",
+            "description": "Quantas entries a edição alterou"
+          },
+          "entry": {
+            "$ref": "#/components/schemas/EntryOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "affected",
+          "entry"
+        ],
+        "title": "EntryUpdateOut"
+      },
+      "ExternalHolderBalanceOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "balance": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance",
+            "description": "Soma das entries não pagas das contas do titular; zero se não há nada aberto"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "balance"
+        ],
+        "title": "ExternalHolderBalanceOut"
       },
       "ExternalHolderIn": {
         "properties": {
@@ -1802,6 +2528,392 @@
         ],
         "title": "HealthResponse"
       },
+      "IncomePointOut": {
+        "properties": {
+          "competencia": {
+            "type": "string",
+            "format": "date",
+            "title": "Competencia"
+          },
+          "installments": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Installments",
+            "description": "Saídas de commitments `installment`"
+          },
+          "income": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Income",
+            "description": "Entries de categoria `income`"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio",
+            "description": "installments / income, com 4 casas; nulo quando não há entrada no mês"
+          }
+        },
+        "type": "object",
+        "required": [
+          "competencia",
+          "installments",
+          "income",
+          "ratio"
+        ],
+        "title": "IncomePointOut"
+      },
+      "IngestBatch": {
+        "properties": {
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/IngestEntryIn"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Entries"
+          }
+        },
+        "type": "object",
+        "required": [
+          "entries"
+        ],
+        "title": "IngestBatch"
+      },
+      "IngestBatchOut": {
+        "properties": {
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/IngestResultOut"
+            },
+            "type": "array",
+            "title": "Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "results"
+        ],
+        "title": "IngestBatchOut"
+      },
+      "IngestEntryIn": {
+        "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Idempotency Key",
+            "description": "Chave do lançamento no FinCoach; reenviar a mesma chave não duplica"
+          },
+          "match_entry_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Match Entry Id",
+            "description": "Entry `previsto` a confirmar em vez de criar uma nova; com ela, os campos de criação são ignorados"
+          },
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "category_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category Id"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "purchase_date": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Date"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number",
+                "exclusiveMinimum": 0.0
+              },
+              {
+                "type": "string",
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "idempotency_key"
+        ],
+        "title": "IngestEntryIn"
+      },
+      "IngestResultOut": {
+        "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "title": "Idempotency Key"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "created",
+              "matched",
+              "existing"
+            ],
+            "title": "Outcome",
+            "description": "created: entry nova; matched: entry existente confirmada; existing: a chave já tinha entrado e nada foi gravado"
+          },
+          "entry": {
+            "$ref": "#/components/schemas/EntryOut"
+          }
+        },
+        "type": "object",
+        "required": [
+          "idempotency_key",
+          "outcome",
+          "entry"
+        ],
+        "title": "IngestResultOut"
+      },
+      "MonthAccountOut": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Account Id"
+          },
+          "account_name": {
+            "type": "string",
+            "title": "Account Name"
+          },
+          "account_kind": {
+            "type": "string",
+            "enum": [
+              "checking",
+              "credit_card",
+              "store_credit"
+            ],
+            "title": "Account Kind"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/TotalsOut"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/MonthEntryOut"
+            },
+            "type": "array",
+            "title": "Entries"
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "account_name",
+          "account_kind",
+          "totals",
+          "entries"
+        ],
+        "title": "MonthAccountOut"
+      },
+      "MonthEntryOut": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "commitment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Commitment Id"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "commitment_kind": {
+            "type": "string",
+            "enum": [
+              "installment",
+              "recurring",
+              "single"
+            ],
+            "title": "Commitment Kind"
+          },
+          "installment_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installment Count"
+          },
+          "category_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Category Id"
+          },
+          "category_name": {
+            "type": "string",
+            "title": "Category Name"
+          },
+          "direction": {
+            "type": "string",
+            "enum": [
+              "expense",
+              "income"
+            ],
+            "title": "Direction"
+          },
+          "seq": {
+            "type": "integer",
+            "title": "Seq"
+          },
+          "competencia": {
+            "type": "string",
+            "format": "date",
+            "title": "Competencia"
+          },
+          "amount": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "previsto",
+              "confirmado",
+              "pago"
+            ],
+            "title": "Status"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "fincoach"
+            ],
+            "title": "Source"
+          },
+          "edited_manually": {
+            "type": "boolean",
+            "title": "Edited Manually"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "commitment_id",
+          "description",
+          "commitment_kind",
+          "installment_count",
+          "category_id",
+          "category_name",
+          "direction",
+          "seq",
+          "competencia",
+          "amount",
+          "status",
+          "paid_at",
+          "source",
+          "edited_manually"
+        ],
+        "title": "MonthEntryOut"
+      },
+      "MonthOut": {
+        "properties": {
+          "month": {
+            "type": "string",
+            "title": "Month",
+            "description": "Competência no formato yyyy-mm"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/TotalsOut"
+          },
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/MonthAccountOut"
+            },
+            "type": "array",
+            "title": "Accounts"
+          }
+        },
+        "type": "object",
+        "required": [
+          "month",
+          "totals",
+          "accounts"
+        ],
+        "title": "MonthOut"
+      },
       "SeedOut": {
         "properties": {
           "created": {
@@ -1814,6 +2926,42 @@
           "created"
         ],
         "title": "SeedOut"
+      },
+      "TotalsOut": {
+        "properties": {
+          "income": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Income",
+            "description": "Entradas: entries de categoria `income`"
+          },
+          "expense": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Expense",
+            "description": "Saídas: entries de categoria `expense`"
+          },
+          "balance": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance",
+            "description": "income - expense"
+          },
+          "installments": {
+            "type": "string",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Installments",
+            "description": "Total comprometido em parcelas: saídas de commitments `installment`"
+          }
+        },
+        "type": "object",
+        "required": [
+          "income",
+          "expense",
+          "balance",
+          "installments"
+        ],
+        "title": "TotalsOut"
       },
       "ValidationError": {
         "properties": {

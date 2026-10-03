@@ -1,15 +1,16 @@
 import uuid
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel, ConfigDict, StringConstraints
-from sqlalchemy import exists, select
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from sqlalchemy import and_, exists, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import CurrentMember, get_current_member
-from app.db.models import Account, ExternalHolder
+from app.db.models import Account, Commitment, Entry, ExternalHolder
 from app.db.session import get_member_session
 
 router = APIRouter(prefix="/external-holders", tags=["external-holders"])
@@ -29,6 +30,16 @@ class ExternalHolderOut(BaseModel):
     id: uuid.UUID
     name: str
     created_at: datetime
+
+
+class ExternalHolderBalanceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    balance: Decimal = Field(
+        description="Soma das entries não pagas das contas do titular; zero se não há nada aberto"
+    )
 
 
 def _duplicate_name() -> HTTPException:
@@ -55,6 +66,35 @@ async def list_external_holders(member: Member, session: Session) -> list[Extern
         .order_by(ExternalHolder.name)
     )
     return list(result)
+
+
+# Declarada antes de `/{holder_id}`, senão "balance" seria lido como id.
+@router.get("/balance", response_model=list[ExternalHolderBalanceOut])
+async def list_external_holder_balances(
+    member: Member, session: Session
+) -> list[ExternalHolderBalanceOut]:
+    """Quanto a household deve a cada titular externo. Derivado, nunca armazenado:
+    marcar a entry como `pago` é o registro do reembolso, sem transferência à parte.
+    Titular sem nada em aberto vem com saldo zero."""
+    open_entries = Account.__table__.join(
+        Commitment.__table__, Commitment.account_id == Account.id
+    ).join(Entry.__table__, and_(Entry.commitment_id == Commitment.id, Entry.status != "pago"))
+    balance = func.coalesce(func.sum(Entry.amount), Decimal("0.00"))
+    rows = await session.execute(
+        select(ExternalHolder.id, ExternalHolder.name, balance)
+        .select_from(ExternalHolder)
+        .outerjoin(
+            open_entries,
+            and_(
+                Account.external_holder_id == ExternalHolder.id,
+                Account.holder_kind == "external",
+            ),
+        )
+        .where(ExternalHolder.household_id == member.household_id)
+        .group_by(ExternalHolder.id)
+        .order_by(ExternalHolder.name)
+    )
+    return [ExternalHolderBalanceOut(id=id, name=name, balance=amount) for id, name, amount in rows]
 
 
 @router.post("", response_model=ExternalHolderOut, status_code=status.HTTP_201_CREATED)

@@ -40,7 +40,14 @@ def postgres_url() -> Iterator[str]:
     `CI` definida) a ausência de Docker é falha, para a suíte nunca ficar verde à toa.
     """
     try:
-        container = PostgresContainer(POSTGRES_IMAGE, driver="asyncpg")
+        # Sem autovacuum: um ANALYZE automático de `account` no meio do
+        # `test_rls_migration_downgrade_runs` trava contra o `ENABLE ROW LEVEL SECURITY`
+        # da migration (ambos atualizam a linha da tabela em pg_class) e o Postgres
+        # derruba a migration por deadlock. Os testes que precisam de estatística
+        # rodam `ANALYZE` explícito.
+        container = PostgresContainer(POSTGRES_IMAGE, driver="asyncpg").with_command(
+            "postgres -c autovacuum=off"
+        )
         container.start()
     except Exception as exc:
         if os.environ.get("CI"):
