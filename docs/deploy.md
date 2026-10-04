@@ -76,7 +76,12 @@ Nada disso é automatizado: depende de contas e segredos.
    crie `SLATE_API_URL` com a URL pública do serviço (ex.
    `https://slate-api.onrender.com`). Em Actions → keepalive → Run workflow, rode uma
    vez à mão e confira que passou.
-4. **CORS:** quando o slate-web tiver domínio definitivo, atualize
+4. **Hook do Supabase (Custom Access Token):** a API valida o JWT do Supabase (HS256,
+   `aud=authenticated`) e exige os claims `member_id` e `household_id` no topo do token
+   (`app/core/auth.py`). O Supabase não os emite sozinho: em Authentication → Hooks,
+   habilite o *Custom Access Token* com uma função Postgres que busque o membro do
+   `auth.uid()` e acrescente os dois claims. Sem o hook, toda rota autenticada responde 401.
+5. **CORS:** quando o slate-web tiver domínio definitivo, atualize
    `CORS_ALLOWED_ORIGINS` no dashboard do Render (Environment) com ele.
 
 ## Limites do keepalive
